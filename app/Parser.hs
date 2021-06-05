@@ -77,6 +77,7 @@ findCommand =
 
 findUrl :: Parsec Void Text Entry
 findUrl = do
+  space
   (T.pack -> chars) <- manyTill anySingle ((() <$ spaceChar) <|> eof)
   guard $ chars =~ urlRegex
   return . URL $
