@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Parser where
@@ -59,7 +60,7 @@ findCommand :: Parsec Void Text Entry
 findCommand =
   try
     ( do
-        skipManyTill anySingle (string (myNick <> ":"))
+        _ <- skipManyTill anySingle (string (myNick <> ":"))
         space
         cmd <- manyTill anySingle (() <$ spaceChar <|> eof)
         space
@@ -68,7 +69,7 @@ findCommand =
         return $ Command (T.pack cmd) (T.pack args)
     )
     <|> do
-      skipManyTill anySingle "'"
+      _ <- skipManyTill anySingle "'"
       cmd <- manyTill anySingle (() <$ spaceChar <|> eof)
       space
       args <- many $ anySingleBut '\''
@@ -77,12 +78,21 @@ findCommand =
 
 findUrl :: Parsec Void Text Entry
 findUrl = do
-  space
-  (T.pack -> chars) <- manyTill anySingle ((() <$ spaceChar) <|> eof)
-  guard $ chars =~ urlRegex
-  return . URL $
-    if "https://" `T.isPrefixOf` chars || "http://" `T.isPrefixOf` chars
-      then chars
-      else "https://" <> chars
+  (T.pack -> chars) <- lookAhead $ manyTill anySingle eof
+  case matchRegex chars urlRegex of
+    Just (a, b, _, x) -> do
+      _ <- string a
+      _ <- string b
+      return . URL $
+        if "https://" `T.isPrefixOf` x || "http://" `T.isPrefixOf` x
+          then x
+          else "https://" <> x
+    _ -> Text.Megaparsec.empty
+
 urlRegex :: Text
-urlRegex = "[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_\\+.~#?&//=]*)"
+urlRegex = "([-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b[-a-zA-Z0-9()@:%_\\+.~#?&//=]*)"
+
+matchRegex :: T.Text -> T.Text -> Maybe (T.Text, T.Text, T.Text, T.Text)
+matchRegex message regex = case message =~~ regex of
+  Just (a :: T.Text, b :: T.Text, c :: T.Text, [x]) -> Just (a, b, c, x)
+  _ -> Nothing
