@@ -5,23 +5,19 @@ module Utils where
 
 import Control.Applicative ((<|>))
 import Control.Concurrent
-import qualified Control.Exception as CE
-import Control.Monad (forever, msum, void, when)
+import Control.Monad (forever, void)
 import Control.Monad.IO.Class
-import Data.Aeson.QQ.Simple
 import Data.Char (isDigit)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Text.IO as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
-import qualified Network.HTTP.Client as C
 import Network.IRC.Client
 import Text.Pretty.Simple
 import Text.Read (readMaybe)
 import Types
 import Web.Pixiv
-import Web.Pixiv.Auth (Token)
 
 setupTokenRefersh :: IRCBot ()
 setupTokenRefersh = forkIRC . forever $ do

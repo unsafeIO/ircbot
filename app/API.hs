@@ -8,11 +8,11 @@ module API where
 import Config
 import Control.Monad.Catch (try)
 import Control.Monad.IO.Class
-import Data.Aeson (Value, decode, encode, object, withObject, (.:), (.=))
+import Data.Aeson (decode, encode, object, withObject, (.:), (.=))
 import Data.Aeson.Types (parseMaybe)
 import Data.ByteString (ByteString)
+import qualified Data.ByteString as BS
 import Data.ByteString.Lazy (toStrict)
-import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as LBS.Char8
 import Data.List (find)
 import Data.Text (Text)
@@ -21,14 +21,12 @@ import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Lens.Micro
 import Network.HTTP.Client
 import Network.HTTP.Client.MultipartFormData
-import Network.HTTP.Client.TLS (newTlsManager)
 import Servant.Client (ClientError)
 import qualified Text.HTML.TagSoup as S
 import qualified Text.HTML.TagSoup.Match as S
 import Types
 import Utils
 import qualified Web.Pixiv.API as P
-import Web.Pixiv.Download
 import Web.Pixiv.Types
 import qualified Web.Pixiv.Types.Lens as L
 import Web.Pixiv.Utils
@@ -128,28 +126,26 @@ google q = try $ do
       (GoogleItem {..} : _) -> Just $ T.init $ T.unlines [title, snippet, link]
       _ -> Nothing
 
-hl :: IRCBot (Either HttpException (Maybe (Text, Text, Text)))
+hl :: IRCBot (Either HttpException (Text, Text, Text))
 hl = try $ do
   req <- parseRequest "http://m.laohuangli.net"
   manager <- getManager
   result <- liftIO $ httpLbs req {requestHeaders = ua} manager
   let parsed = S.parseTags $ toStrict $responseBody result
-      f = dropWhile (\t -> not $ S.isTagOpenName "div" t && S.fromAttrib "class" t == "neirong_Yi_Ji")
-      g = dropWhile (\t -> not $ S.isTagOpenName "span" t && S.fromAttrib "class" t == "txt1")
-      yj = case f parsed of
-        ((S.TagOpen "div" [("class", "neirong_Yi_Ji")]) : S.TagText yi : xs) -> case f xs of
-          ((S.TagOpen "div" [("class", "neirong_Yi_Ji")]) : S.TagText ji : _) -> Just (yi, ji)
-          _ -> Nothing
-        _ -> Nothing
-      date = case g parsed of
-        ((S.TagOpen "span" [("class", "txt1")]) : S.TagText d : _) -> Just d
-        _ -> Nothing
-      k (Just (y, j)) = Just (decodeUtf8 y, decodeUtf8 j)
-      k _ = Nothing
-  return $ do
-    d <- decodeUtf8 <$> date
-    (y, j) <- k yj
-    return (d, y, j)
+      yi = takeWhile (not . S.tagCloseLit "td") $ dropWhile (not . S.tagOpenLit "td" (S.anyAttrLit ("class", "suit_cont"))) parsed
+      ji = takeWhile (not . S.tagCloseLit "td") $ dropWhile (not . S.tagOpenLit "td" (S.anyAttrLit ("class", "taboo_cont"))) parsed
+      go acc (S.TagOpen "span" [("class", "t6left")] : S.TagText txt : S.TagClose "span" : xs) = go (txt : acc) xs
+      go acc (_ : [S.TagClose "span"]) = acc
+      go acc (_ : xs) = go acc xs
+      go acc _ = acc
+      resultYi = decodeUtf8 $ BS.intercalate ", " $ go [] yi
+      resultJi = decodeUtf8 $ BS.intercalate ", " $ go [] ji
+      _f = dropWhile (not . S.tagOpenLit "div" (S.anyAttrLit ("class", "item_tit")))
+      info = decodeUtf8 $ case _f . tail . _f $ parsed of
+        -- emprt_r_n => \r\n, not sure why it becomes a tag text
+        (S.TagOpen "div" [("class", "item_tit")] : S.TagText a : S.TagClose "div" : _empty_r_n : S.TagOpen "p" [] : S.TagText b : S.TagClose "p" : _) -> a <> ", " <> b
+        _ -> "gg"
+  pure (info, resultYi, resultJi)
 
 uploadToTelegraph :: Illust -> IRCBot (Either HttpException (Maybe Text))
 uploadToTelegraph i = try $ do
@@ -184,6 +180,6 @@ canonicalPixivUrl url
       let parsed = S.parseTags $ responseBody result
           f = find (S.tagOpenLit "link" $ S.anyAttrLit ("rel", "canonical")) parsed
       case f of
-        Just (S.TagOpen _ attrs) -> pure $ extractPUrl =<< decodeUtf8 . toStrict . snd <$> find (\(k, v) -> k == "href") attrs
+        Just (S.TagOpen _ attrs) -> pure $ extractPUrl =<< decodeUtf8 . toStrict . snd <$> find (\(k, _v) -> k == "href") attrs
         _ -> pure Nothing
 canonicalPixivUrl _ = pure Nothing

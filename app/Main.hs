@@ -93,7 +93,7 @@ main = do
                             _ -> return ()
                         -- A single url
                         [URL url] -> do
-                          url' <- canonicalPixivUrl url;
+                          url' <- canonicalPixivUrl url
                           case url' of
                             -- This url indicates a pixiv artwork
                             Just (PIllust picId) -> do
@@ -277,7 +277,7 @@ myCommandHandler replyF (Command cmd args) = case cmd of
             forM_ (take 5 xs) $ \x ->
               replyF $ T.concat ["[", x ^. J.user . J.name, "]: ", x ^. J.comment]
       Left err -> pPrint err >> replyF "未能获取评论"
-  "source" -> replyF "https://gitlab.com/unsafeIO/ircbot"
+  "source" -> replyF "https://github.com/unsafeIO/ircbot"
   "google" -> do
     if T.null args
       then replyF "搜啥?"
@@ -290,7 +290,7 @@ myCommandHandler replyF (Command cmd args) = case cmd of
   "today" -> do
     result <- hl
     case result of
-      Right (Just (d, y, j)) -> do
+      Right ((d, y, j)) -> do
         replyF d
         replyF $ "宜:" <> y
         replyF $ "忌:" <> j
