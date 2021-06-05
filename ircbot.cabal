@@ -61,6 +61,7 @@ executable ircbot
     , prettyprinter
     , random
     , random-shuffle
+    , regex-tdfa
     , servant-client
     , stm
     , tagsoup

@@ -14,14 +14,17 @@ import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (toStrict)
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Lazy.Char8 as LBS.Char8
+import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Lens.Micro
 import Network.HTTP.Client
 import Network.HTTP.Client.MultipartFormData
+import Network.HTTP.Client.TLS (newTlsManager)
 import Servant.Client (ClientError)
 import qualified Text.HTML.TagSoup as S
+import qualified Text.HTML.TagSoup.Match as S
 import Types
 import Utils
 import qualified Web.Pixiv.API as P
@@ -170,3 +173,17 @@ uploadToTelegraph i = try $ do
       body = responseBody result
   liftIO $ LBS.Char8.putStrLn body
   pure $ parseMaybe parsePageUrl =<< decode body
+
+canonicalPixivUrl :: Text -> IRCBot (Maybe PUrl)
+canonicalPixivUrl url
+  | "pixiv" `T.isInfixOf` url =
+    do
+      req <- parseRequest $ T.unpack url
+      manager <- getManager
+      result <- liftIO $ httpLbs req {requestHeaders = ua} manager
+      let parsed = S.parseTags $ responseBody result
+          f = find (S.tagOpenLit "link" $ S.anyAttrLit ("rel", "canonical")) parsed
+      case f of
+        Just (S.TagOpen _ attrs) -> pure $ extractPUrl =<< decodeUtf8 . toStrict . snd <$> find (\(k, v) -> k == "href") attrs
+        _ -> pure Nothing
+canonicalPixivUrl _ = pure Nothing

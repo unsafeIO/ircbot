@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Parser where
 
@@ -11,6 +12,7 @@ import qualified Data.Text as T
 import Data.Void (Void)
 import Text.Megaparsec
 import Text.Megaparsec.Char
+import Text.Regex.TDFA
 
 data ParsedMessage = ParsedMessage {bridgedSender :: Maybe Text, entries :: [Entry]}
   deriving (Show)
@@ -75,6 +77,11 @@ findCommand =
 
 findUrl :: Parsec Void Text Entry
 findUrl = do
-  (_, s) <- manyTill_ anySingle (try "https://" <|> "http://")
-  chars <- manyTill anySingle ((() <$ spaceChar) <|> eof)
-  return . URL $ s <> T.pack chars
+  (T.pack -> chars) <- manyTill anySingle ((() <$ spaceChar) <|> eof)
+  guard $ chars =~ urlRegex
+  return . URL $
+    if "https://" `T.isPrefixOf` chars || "http://" `T.isPrefixOf` chars
+      then chars
+      else "https://" <> chars
+urlRegex :: Text
+urlRegex = "[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_\\+.~#?&//=]*)"

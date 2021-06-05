@@ -47,32 +47,14 @@ myIRCLogger origin x = do
 
 joinChannels l = mapM_ (send . Join) l
 
-extract :: [Text] -> Text -> Maybe Int
-extract prefixes url = msum [T.stripPrefix p url | p <- prefixes] >>= (readMaybe . takeWhile isDigit . T.unpack)
-
 data PUrl = PIllust Int | PUser Int deriving (Show)
 
 extractPUrl :: Text -> Maybe PUrl
-extractPUrl url = extractIllustIdFromURL url <|> extractUserIdFromURL url
-
-extractIllustIdFromURL :: Text -> Maybe PUrl
-extractIllustIdFromURL =
-  fmap PIllust
-    . extract
-      [ "https://www.pixiv.net/artworks/",
-        "https://www.pixiv.net/en/artworks/",
-        "http://pixiv.net/i/",
-        "https://www.pixiv.net/member_illust.php?mode=medium&illust_id="
-      ]
-
-extractUserIdFromURL :: Text -> Maybe PUrl
-extractUserIdFromURL =
-  fmap PUser
-    . extract
-      [ "https://www.pixiv.net/users/",
-        "https://www.pixiv.net/en/users/",
-        "http://pixiv.net/u/"
-      ]
+extractPUrl url = illust <|> user
+  where
+    extract f prefix url = T.stripPrefix prefix url >>= (readMaybe . takeWhile isDigit . T.unpack) >>= pure . f
+    illust = extract PIllust "https://www.pixiv.net/artworks/" url
+    user = extract PUser "https://www.pixiv.net/users/" url
 
 imageUrlToCF :: Text -> Text
 imageUrlToCF = T.replace "i.pximg.net" "setu.libido.workers.dev"

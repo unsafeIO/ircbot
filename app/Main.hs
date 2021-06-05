@@ -77,47 +77,51 @@ main = do
                               info <- getIllustDetail picId
                               -- enable short url if no pb
                               sendPic replyF info (not isPb)
-                            URL url -> case extractPUrl url of
-                              --  https://fars.ee/... https://www.pixiv.net/artworks/...
-                              Just (PIllust picId) -> do
-                                liftIO $ writeIORef lastId picId
-                                info <- getIllustDetail picId
-                                --- enable short url if no pb
-                                sendPic replyF info (not isPb)
-                              Just (PUser userId) -> do
-                                info <- getUserDetailAndAnIllust userId
-                                sendUserAndAnIllust replyF info
-                              _ -> return ()
+                            URL url -> do
+                              url' <- canonicalPixivUrl url
+                              case url' of
+                                --  https://fars.ee/... https://www.pixiv.net/artworks/...
+                                Just (PIllust picId) -> do
+                                  liftIO $ writeIORef lastId picId
+                                  info <- getIllustDetail picId
+                                  --- enable short url if no pb
+                                  sendPic replyF info (not isPb)
+                                Just (PUser userId) -> do
+                                  info <- getUserDetailAndAnIllust userId
+                                  sendUserAndAnIllust replyF info
+                                _ -> return ()
                             _ -> return ()
                         -- A single url
-                        [URL url] -> case extractPUrl url of
-                          -- This url indicates a pixiv artwork
-                          Just (PIllust picId) -> do
-                            liftIO $ writeIORef lastId picId
-                            info <- getIllustDetail picId
-                            -- enable short url
-                            sendPic replyF info True
-                          Just (PUser userId) -> do
-                            info <- getUserDetailAndAnIllust userId
-                            sendUserAndAnIllust replyF info
-                          -- Unknown url
-                          _ ->
-                            if isFc url
-                              then do
-                                cts <- getContentTypeAndSize url
-                                case cts of
-                                  Right (Just (ct, cs)) -> replyF $ "⇪PB 文件类型: " <> ct <> ", 文件大小: " <> T.pack (printf "%.2f KiB" cs)
-                                  _ -> replyF "⇪PB"
-                              else do
-                                result <- getTitle url
-                                -- send title if no error
-                                case result of
-                                  Right title ->
-                                    replyF $
-                                      "⇪网页标题: " <> case title of
-                                        Just x -> x
-                                        _ -> "未知"
-                                  Left err -> pPrint err
+                        [URL url] -> do
+                          url' <- canonicalPixivUrl url;
+                          case url' of
+                            -- This url indicates a pixiv artwork
+                            Just (PIllust picId) -> do
+                              liftIO $ writeIORef lastId picId
+                              info <- getIllustDetail picId
+                              -- enable short url
+                              sendPic replyF info True
+                            Just (PUser userId) -> do
+                              info <- getUserDetailAndAnIllust userId
+                              sendUserAndAnIllust replyF info
+                            -- Unknown url
+                            _ ->
+                              if isFc url
+                                then do
+                                  cts <- getContentTypeAndSize url
+                                  case cts of
+                                    Right (Just (ct, cs)) -> replyF $ "⇪PB 文件类型: " <> ct <> ", 文件大小: " <> T.pack (printf "%.2f KiB" cs)
+                                    _ -> replyF "⇪PB"
+                                else do
+                                  result <- getTitle url
+                                  -- send title if no error
+                                  case result of
+                                    Right title ->
+                                      replyF $
+                                        "⇪网页标题: " <> case title of
+                                          Just x -> x
+                                          _ -> "未知"
+                                    Left err -> pPrint err
 
                         -- A single command
                         (c@(Command _ _) : xs) -> myCommandHandler replyF c >> handle xs
