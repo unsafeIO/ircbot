@@ -170,7 +170,7 @@ sendUserAndAnIllust replyF (Left err) = pPrint err >> replyF (T.pack $ show err)
 -- | Handle pixiv
 sendPic :: (Text -> IRCBot ()) -> Either ClientError P.Illust -> Bool -> IRCBot ()
 sendPic replyF (Right illust) enableShort
-  | Just url <- extractImageUrlsFromIllust illust ^? _head =
+  | Just url <- extractLargeImageUrl $ illust ^. J.imageUrls =
     do
       let isUgoira = illust ^. J.illustType == P.TypeUgoira
           illustId = illust ^. J.illustId
@@ -239,7 +239,7 @@ sendPic replyF (Right illust) enableShort
       when (anySub ["調教", "束縛", "機械姦", "緊縛", "縛り", "鼻フック", "監禁", "口枷"] messy) $
         replyF "⇪ #空指针诱捕器"
   | otherwise = replyF "Unable to extract image url from illust."
-sendPic replyF (Left err) _ = pPrint err >> replyF (T.pack $ show err)
+sendPic replyF (Left err) _ = pPrint err >> replyF "未能从 pixiv 获取插图"
 
 -- | Handle command
 myCommandHandler :: (Text -> IRCBot ()) -> Entry -> IRCBot ()

@@ -18,6 +18,8 @@ import Text.Pretty.Simple
 import Text.Read (readMaybe)
 import Types
 import Web.Pixiv
+import Lens.Micro
+import Web.Pixiv.Types.Lens
 
 setupTokenRefersh :: IRCBot ()
 setupTokenRefersh = forkIRC . forever $ do
@@ -54,6 +56,10 @@ extractPUrl url = illust <|> user
 
 imageUrlToCF :: Text -> Text
 imageUrlToCF = T.replace "i.pximg.net" "setu.libido.workers.dev"
+
+-- | Like 'extractHighestQualityImageUrl' in pixiv, but exclude the original picture
+extractLargeImageUrl :: ImageUrls -> Maybe Text
+extractLargeImageUrl x = x ^. large <|> x ^. medium<|> x ^. squareMedium
 
 isFc :: Text -> Bool
 isFc = T.isInfixOf "fars.ee"
