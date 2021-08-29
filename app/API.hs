@@ -102,7 +102,7 @@ getTitle url = try $ do
   let parsed = S.parseTags $ responseBody result
       f = dropWhile (not . S.isTagOpenName "title") parsed
   case f of
-    ((S.TagOpen "title" []) : S.TagText title : _) -> return (Just . decodeUtf8 . toStrict $ title)
+    ((S.TagOpen "title" _) : S.TagText title : _) -> return (Just . decodeUtf8 . toStrict $ title)
     _ -> return Nothing
 
 getContentTypeAndSize :: Text -> IRCBot (Either HttpException (Maybe (Text, Float)))
@@ -180,6 +180,6 @@ canonicalPixivUrl url
       let parsed = S.parseTags $ responseBody result
           f = find (S.tagOpenLit "link" $ S.anyAttrLit ("rel", "canonical")) parsed
       case f of
-        Just (S.TagOpen _ attrs) -> pure $ extractPUrl =<< decodeUtf8 . toStrict . snd <$> find (\(k, _v) -> k == "href") attrs
+        Just (S.TagOpen _ attrs) -> pure (extractPUrl . decodeUtf8 . toStrict . snd =<< find (\ (k, _v) -> k == "href") attrs)
         _ -> pure Nothing
 canonicalPixivUrl _ = pure Nothing
