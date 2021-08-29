@@ -6,6 +6,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -Wall #-}
 
 module Eval (evalDaemon, evalIRC) where
@@ -24,9 +25,15 @@ import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Debug.Trace (traceIO)
 import GHC (getPrintUnqual, getSessionDynFlags)
+#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
 import InteractiveEval (isDecl, runDecls)
-import Language.Haskell.Interpreter
 import Outputable (Outputable, ppr, showSDocForUser)
+#else
+import GHC.Runtime.Eval (isDecl, runDecls)
+import GHC.Utils.Outputable (Outputable, ppr, showSDocForUser)
+import GHC.Parser.Lexer (mkParserFlags)
+#endif
+import Language.Haskell.Interpreter
 import PQ (Done, IllustLike (toIllusts), PQ (..))
 import Servant.Client (ClientError)
 import System.Random
@@ -97,7 +104,13 @@ setupEval = do
 evalIRC :: Text -> (Text -> IRCBot ()) -> (Bool -> Illust -> IRCBot ()) -> IORef Int -> IRCBot ()
 evalIRC (T.unpack -> msg) replyF sendPic lastRef = do
   result <- evalEnqueue $ do
-    isMsgDecl <- runGhc $ getSessionDynFlags >>= \df -> pure (isDecl df msg)
+    isMsgDecl <- runGhc $ getSessionDynFlags >>= \df ->
+#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
+      let pf = df
+#else
+      let pf = mkParserFlags df
+#endif
+      in pure (isDecl pf msg)
     if isMsgDecl
       then Left . T.unpack . (\x -> "声明: " <> T.intercalate ", " x) <$> (runGhc (runDecls msg) >>= mapM showGHC)
       else do
