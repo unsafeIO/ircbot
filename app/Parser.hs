@@ -86,7 +86,7 @@ findUrl = do
       return . URL $
         if "https://" `T.isPrefixOf` x || "http://" `T.isPrefixOf` x
           then x
-          else "https://" <> x
+          else "http://" <> x
     _ -> Text.Megaparsec.empty
 
 urlRegex :: Text
