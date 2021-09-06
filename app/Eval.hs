@@ -28,10 +28,12 @@ import GHC (getPrintUnqual, getSessionDynFlags, findModule, mkModuleName, getMod
 #if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
 import InteractiveEval (isDecl, runDecls)
 import Outputable (Outputable, ppr, showSDocForUser)
+import PprTyThing (pprTyThingHdr)
 #else
 import GHC.Runtime.Eval (isDecl, runDecls)
 import GHC.Utils.Outputable (Outputable, ppr, showSDocForUser)
 import GHC.Parser.Lexer (mkParserFlags)
+import GHC.Core.Ppr.TyThing (pprTyThingHdr)
 #endif
 import Language.Haskell.Interpreter
 import PQ (Done, IllustLike (toIllusts), PQ (..))
@@ -43,7 +45,6 @@ import Types
 import Utils (forkIRC)
 import Web.Pixiv (Illust, IllustType (TypeIllust), Publicity (Public), SearchTarget (PartialMatchForTags))
 import Web.Pixiv.API
-import GHC.Core.Ppr.TyThing (pprTyThingHdr)
 
 showGHC :: (MonadInterpreter m, Outputable a) => a -> m Text
 showGHC a = do
