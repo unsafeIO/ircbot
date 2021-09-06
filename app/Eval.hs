@@ -19,12 +19,12 @@ import qualified Control.Exception as CE
 import Control.Monad.Catch (try)
 import Control.Monad.Except
 import Data.IORef (IORef, readIORef)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, fromJust, catMaybes)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Debug.Trace (traceIO)
-import GHC (getPrintUnqual, getSessionDynFlags)
+import GHC (getPrintUnqual, getSessionDynFlags, findModule, mkModuleName, getModuleInfo, modInfoExports, lookupName, TyThing (AnId))
 #if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
 import InteractiveEval (isDecl, runDecls)
 import Outputable (Outputable, ppr, showSDocForUser)
@@ -43,6 +43,7 @@ import Types
 import Utils (forkIRC)
 import Web.Pixiv (Illust, IllustType (TypeIllust), Publicity (Public), SearchTarget (PartialMatchForTags))
 import Web.Pixiv.API
+import GHC.Core.Ppr.TyThing (pprTyThingHdr)
 
 showGHC :: (MonadInterpreter m, Outputable a) => a -> m Text
 showGHC a = do
@@ -161,11 +162,15 @@ evalIRC (T.unpack -> msg) replyF sendPic lastRef = do
         stdGen <- liftIO getStdGen
         pure $ S.shuffle' xs (length xs) stdGen
       PBrowse -> do
-        r <- lift $ evalEnqueue $ getModuleExports "PQ"
+        r <- lift $ evalEnqueue $ runGhc $ do
+            mInfo <- fromJust <$> (findModule (mkModuleName "PQ") Nothing >>= getModuleInfo)
+            exports <- catMaybes <$> mapM lookupName (modInfoExports mInfo)
+            (unqual, df)<- getPrintUnqual >>= \x -> (x,) <$> getSessionDynFlags
+            pure [T.pack $ showSDocForUser df unqual (pprTyThingHdr ty) | ty@(AnId _) <- exports]
         lift $ case r of
-          Just(Right xs) -> replyF $ T.intercalate "," [ T.pack x | Fun x <-xs]
+          Just(Right xs) -> do
+            replyF $ T.intercalate ", " xs
           _ -> replyF "未能获取可用函数"
-        undefined
 
 render :: String -> IO Text
 render x = do
