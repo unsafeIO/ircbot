@@ -35,6 +35,7 @@ data PQ a where
   PBind :: PQ a -> (a -> PQ b) -> PQ b
   PLit :: a -> PQ a
   PShuffle :: [a] -> PQ [a]
+  PBrowse :: PQ Done
   deriving (Typeable)
 
 instance Functor PQ where
@@ -98,6 +99,9 @@ echo = PAsString . PLit
 
 shuffle :: [a] -> PQ [a]
 shuffle = PShuffle
+
+browse :: PQ Done
+browse = PBrowse
 
 -----------------------------------------------------------------------------
 -- helper functions

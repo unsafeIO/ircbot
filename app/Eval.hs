@@ -160,6 +160,12 @@ evalIRC (T.unpack -> msg) replyF sendPic lastRef = do
       PShuffle xs -> do
         stdGen <- liftIO getStdGen
         pure $ S.shuffle' xs (length xs) stdGen
+      PBrowse -> do
+        r <- lift $ evalEnqueue $ getModuleExports "PQ"
+        lift $ case r of
+          Just(Right xs) -> replyF $ T.intercalate "," [ T.pack x | Fun x <-xs]
+          _ -> replyF "未能获取可用函数"
+        undefined
 
 render :: String -> IO Text
 render x = do
