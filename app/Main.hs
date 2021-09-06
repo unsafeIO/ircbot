@@ -110,7 +110,12 @@ main = do
                                 then do
                                   cts <- getContentTypeAndSize url
                                   case cts of
-                                    Right (Just (ct, cs)) -> replyF $ "⇪PB 文件类型: " <> ct <> ", 文件大小: " <> T.pack (printf "%.2f KiB" cs)
+                                    Right (Just (ct, cs, mimg)) -> 
+                                      replyF $ "⇪PB 文件类型: " 
+                                        <> ct 
+                                        <> ", 文件大小: " 
+                                        <> T.pack (printf "%.2f KiB" cs)
+                                        <> maybe "" (\(imgType, imgRes) -> ", 图片类型: " <> imgType <> ", 图片尺寸: " <> imgRes) mimg
                                     _ -> replyF "⇪PB"
                                 else do
                                   result <- getTitle url

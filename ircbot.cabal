@@ -41,7 +41,9 @@ executable ircbot
     Types
     Utils
 
-  ghc-options:      -threaded -rtsopts -with-rtsopts=-N -Wall -Wno-name-shadowing
+  ghc-options:
+    -threaded -rtsopts -with-rtsopts=-N -Wall -Wno-name-shadowing
+
   build-depends:
     , aeson
     , base             >=4.7 && <5
@@ -59,14 +61,17 @@ executable ircbot
     , pixiv
     , pretty-simple
     , prettyprinter
+    , process
     , random
     , random-shuffle
     , regex-tdfa
     , servant-client
     , stm
     , tagsoup
+    , temporary
     , text
     , time
+    , transformers
     , unix
 
   default-language: Haskell2010

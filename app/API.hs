@@ -2,6 +2,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TupleSections #-}
 
 module API where
 
@@ -30,6 +32,11 @@ import qualified Web.Pixiv.API as P
 import Web.Pixiv.Types
 import qualified Web.Pixiv.Types.Lens as L
 import Web.Pixiv.Utils
+import System.Process (readProcessWithExitCode)
+import System.IO.Temp (withSystemTempFile)
+import System.Exit
+import Control.Monad (guard)
+import Control.Monad.Trans.Maybe
 
 getIllustDetail :: Int -> IRCBot (Either ClientError Illust)
 getIllustDetail illustId = runPixivInIRC "getIllustDetail" $ P.getIllustDetail illustId
@@ -105,14 +112,18 @@ getTitle url = try $ do
     ((S.TagOpen "title" _) : S.TagText title : _) -> return (Just . decodeUtf8 . toStrict $ title)
     _ -> return Nothing
 
-getContentTypeAndSize :: Text -> IRCBot (Either HttpException (Maybe (Text, Float)))
+getContentTypeAndSize :: Text -> IRCBot (Either HttpException (Maybe (Text, Float, Maybe (Text, Text))))
 getContentTypeAndSize url = try $ do
   req <- parseRequest $ T.unpack url
   manager <- getManager
   result <- liftIO $ httpLbs req {requestHeaders = ua} manager
   let t = decodeUtf8 <$> lookup "Content-Type" (responseHeaders result)
       s = (/ 1024) . read . T.unpack . decodeUtf8 <$> lookup "Content-Length" (responseHeaders result)
-  pure $ (,) <$> t <*> s
+  imageInfo <- liftIO $ runMaybeT $ do
+        contentType <- MaybeT $ pure t
+        guard $ "image" `T.isPrefixOf` contentType
+        MaybeT $ getImageTypeAndResolution (toStrict $ responseBody result)
+  pure $ fmap (uncurry (,,imageInfo)) $ (,) <$> t <*> s
 
 google :: Text -> IRCBot (Either HttpException (Maybe Text))
 google q = try $ do
@@ -183,3 +194,12 @@ canonicalPixivUrl url
         Just (S.TagOpen _ attrs) -> pure (extractPUrl . decodeUtf8 . toStrict . snd =<< find (\ (k, _v) -> k == "href") attrs)
         _ -> pure Nothing
 canonicalPixivUrl _ = pure Nothing
+
+getImageTypeAndResolution :: ByteString -> IO (Maybe (Text,Text))
+getImageTypeAndResolution bs = withSystemTempFile "pb-img" $ \fp h ->  do
+  BS.hPut h bs
+  (code, T.pack -> stdout, _)<- readProcessWithExitCode "magick" ["identify", fp] ""
+  pure $ case code of
+    ExitSuccess
+      |  [_,ty,res,_,_,_,_,_,_] <- T.split (== ' ') stdout-> pure (ty,res)
+    _ -> Nothing
