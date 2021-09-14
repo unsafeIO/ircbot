@@ -1,9 +1,10 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module API where
 
@@ -23,7 +24,11 @@ import Data.Text.Encoding (decodeUtf8, encodeUtf8)
 import Lens.Micro
 import Network.HTTP.Client
 import Network.HTTP.Client.MultipartFormData
+import Network.HTTP.Types (Header)
 import Servant.Client (ClientError)
+import System.Exit
+import System.IO.Temp (withSystemTempFile)
+import System.Process (readProcessWithExitCode)
 import qualified Text.HTML.TagSoup as S
 import qualified Text.HTML.TagSoup.Match as S
 import Types
@@ -32,11 +37,6 @@ import qualified Web.Pixiv.API as P
 import Web.Pixiv.Types
 import qualified Web.Pixiv.Types.Lens as L
 import Web.Pixiv.Utils
-import System.Process (readProcessWithExitCode)
-import System.IO.Temp (withSystemTempFile)
-import System.Exit
-import Control.Monad (guard)
-import Control.Monad.Trans.Maybe
 
 getIllustDetail :: Int -> IRCBot (Either ClientError Illust)
 getIllustDetail illustId = runPixivInIRC "getIllustDetail" $ P.getIllustDetail illustId
@@ -99,31 +99,18 @@ uploadPB filename bs = try $ do
   result <- liftIO $ httpLbs req manager
   pure $ decodeUtf8 . toStrict . responseBody $ result
 
+ua :: [Header]
 ua = [("user-agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.102 Safari/537.36")]
 
-getTitle :: Text -> IRCBot (Either HttpException (Maybe Text))
-getTitle url = try $ do
-  req <- parseRequest $ T.unpack url
-  manager <- getManager
-  result <- liftIO $ httpLbs req {requestHeaders = ua} manager
-  let parsed = S.parseTags $ responseBody result
-      f = dropWhile (not . S.isTagOpenName "title") parsed
-  case f of
-    ((S.TagOpen "title" _) : S.TagText title : _) -> return (Just . decodeUtf8 . toStrict $ title)
-    _ -> return Nothing
-
-getContentTypeAndSize :: Text -> IRCBot (Either HttpException (Maybe (Text, Float, Maybe (Text, Text))))
-getContentTypeAndSize url = try $ do
-  req <- parseRequest $ T.unpack url
-  manager <- getManager
-  result <- liftIO $ httpLbs req {requestHeaders = ua} manager
-  let t = decodeUtf8 <$> lookup "Content-Type" (responseHeaders result)
-      s = (/ 1024) . read . T.unpack . decodeUtf8 <$> lookup "Content-Length" (responseHeaders result)
-  imageInfo <- liftIO $ runMaybeT $ do
-        contentType <- MaybeT $ pure t
-        guard $ "image" `T.isPrefixOf` contentType
-        MaybeT $ getImageTypeAndResolution (toStrict $ responseBody result)
-  pure $ fmap (uncurry (,,imageInfo)) $ (,) <$> t <*> s
+withPerformRequest :: Text -> (Either HttpException (Response LBS.Char8.ByteString) -> IRCBot a) -> IRCBot a
+withPerformRequest url f =
+  try
+    ( do
+        req <- parseRequest $ T.unpack url
+        manager <- getManager
+        liftIO $ httpLbs req {requestHeaders = ua} manager
+    )
+    >>= f
 
 google :: Text -> IRCBot (Either HttpException (Maybe Text))
 google q = try $ do
@@ -142,7 +129,7 @@ hl = try $ do
   req <- parseRequest "http://m.laohuangli.net"
   manager <- getManager
   result <- liftIO $ httpLbs req {requestHeaders = ua} manager
-  let parsed = S.parseTags $ toStrict $responseBody result
+  let parsed = S.parseTags $ toStrict $ responseBody result
       yi = takeWhile (not . S.tagCloseLit "td") $ dropWhile (not . S.tagOpenLit "td" (S.anyAttrLit ("class", "suit_cont"))) parsed
       ji = takeWhile (not . S.tagCloseLit "td") $ dropWhile (not . S.tagOpenLit "td" (S.anyAttrLit ("class", "taboo_cont"))) parsed
       go acc (S.TagOpen "span" [("class", "t6left")] : S.TagText txt : S.TagClose "span" : xs) = go (txt : acc) xs
@@ -191,15 +178,15 @@ canonicalPixivUrl url
       let parsed = S.parseTags $ responseBody result
           f = find (S.tagOpenLit "link" $ S.anyAttrLit ("rel", "canonical")) parsed
       case f of
-        Just (S.TagOpen _ attrs) -> pure (extractPUrl . decodeUtf8 . toStrict . snd =<< find (\ (k, _v) -> k == "href") attrs)
+        Just (S.TagOpen _ attrs) -> pure (extractPUrl . decodeUtf8 . toStrict . snd =<< find (\(k, _v) -> k == "href") attrs)
         _ -> pure Nothing
 canonicalPixivUrl _ = pure Nothing
 
-getImageTypeAndResolution :: ByteString -> IO (Maybe (Text,Text))
-getImageTypeAndResolution bs = withSystemTempFile "pb-img" $ \fp h ->  do
+getImageTypeAndResolution :: ByteString -> IO (Maybe (Text, Text))
+getImageTypeAndResolution bs = withSystemTempFile "pb-img" $ \fp h -> do
   BS.hPut h bs
-  (code, T.pack -> stdout, _)<- readProcessWithExitCode "magick" ["identify", fp] ""
+  (code, T.pack -> stdout, _) <- readProcessWithExitCode "magick" ["identify", fp] ""
   pure $ case code of
     ExitSuccess
-      |  [_,ty,res,_,_,_,_,_,_] <- T.split (== ' ') stdout-> pure (ty,res)
+      | [_, ty, res, _, _, _, _, _, _] <- T.split (== ' ') stdout -> pure (ty, res)
     _ -> Nothing

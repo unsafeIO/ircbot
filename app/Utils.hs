@@ -7,18 +7,21 @@ import Control.Applicative ((<|>))
 import Control.Concurrent
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class
+import qualified Data.ByteString.Lazy.Char8 as LBS.Char8
 import Data.Char (isDigit)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Text.IO as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
+import Lens.Micro
+import Network.HTTP.Types (ResponseHeaders)
 import Network.IRC.Client
+import qualified Text.HTML.TagSoup as S
 import Text.Pretty.Simple
 import Text.Read (readMaybe)
 import Types
 import Web.Pixiv
-import Lens.Micro
 import Web.Pixiv.Types.Lens
 
 setupTokenRefersh :: IRCBot ()
@@ -59,7 +62,7 @@ imageUrlToCF = T.replace "i.pximg.net" "setu.libido.workers.dev"
 
 -- | Like 'extractHighestQualityImageUrl' in pixiv, but exclude the original picture
 extractLargeImageUrl :: ImageUrls -> Maybe Text
-extractLargeImageUrl x = x ^. large <|> x ^. medium<|> x ^. squareMedium
+extractLargeImageUrl x = x ^. large <|> x ^. medium <|> x ^. squareMedium
 
 isFc :: Text -> Bool
 isFc = T.isInfixOf "fars.ee"
@@ -88,3 +91,20 @@ imageUrlsToTelegraph :: [Text] -> Text
 imageUrlsToTelegraph urls = "[" <> T.intercalate "," (single <$> urls) <> "]"
   where
     single url = "{\"tag\": \"img\", \"attrs\": {\"src\":\"" <> url <> "\"}}"
+
+extractWebpageTitle ::
+  -- | content
+  LBS.Char8.ByteString ->
+  Maybe Text
+extractWebpageTitle content =
+  let parsed = S.parseTags content
+      f = dropWhile (not . S.isTagOpenName "title") parsed
+   in case f of
+        ((S.TagOpen "title" _) : S.TagText title : _) -> Just . decodeUtf8 $ LBS.Char8.toStrict title
+        _ -> Nothing
+
+extractContentSizeAndType :: ResponseHeaders -> Maybe (Text, Float)
+extractContentSizeAndType headers =
+  let t = decodeUtf8 <$> lookup "Content-Type" headers
+      s = (/ 1024) . read . T.unpack . decodeUtf8 <$> lookup "Content-Length" headers
+   in (,) <$> t <*> s

@@ -22,6 +22,7 @@ import qualified Data.Text as T
 import Eval
 import GHC.IO (unsafePerformIO)
 import Lens.Micro
+import Network.HTTP.Client (responseBody, responseHeaders)
 import Network.IRC.Client
 import PQ (tagString)
 import Parser
@@ -104,29 +105,38 @@ main = do
                             Just (PUser userId) -> do
                               info <- getUserDetailAndAnIllust userId
                               sendUserAndAnIllust replyF info
-                            -- Unknown url
-                            _ ->
-                              if isFc url
-                                then do
-                                  cts <- getContentTypeAndSize url
-                                  case cts of
-                                    Right (Just (ct, cs, mimg)) -> 
-                                      replyF $ "⇪PB 文件类型: " 
-                                        <> ct 
-                                        <> ", 文件大小: " 
-                                        <> T.pack (printf "%.2f KiB" cs)
-                                        <> maybe "" (\(imgType, imgRes) -> ", 图片类型: " <> imgType <> ", 图片尺寸: " <> imgRes) mimg
-                                    _ -> replyF "⇪PB"
-                                else do
-                                  result <- getTitle url
-                                  -- send title if no error
-                                  case result of
-                                    Right title ->
-                                      replyF $
-                                        "⇪网页标题: " <> case title of
-                                          Just x -> x
-                                          _ -> "未知"
-                                    Left err -> pPrint err
+                            -- Unknown url or pb
+                            _ -> withPerformRequest url $ \case
+                              Left err -> pPrint err
+                              Right response -> do
+                                case extractWebpageTitle $ responseBody response of
+                                  Just title -> replyF $ "⇪网页标题: " <> title
+                                  _ ->
+                                    case extractContentSizeAndType $ responseHeaders response of
+                                      Just (ct, cs) -> do
+                                        imageInfo <-
+                                          if "image" `T.isPrefixOf` ct
+                                            then liftIO $ getImageTypeAndResolution $ toStrict $ responseBody response
+                                            else pure Nothing
+                                        replyF $
+                                          T.concat
+                                            [ "文件类型: ",
+                                              ct,
+                                              ", 文件大小: ",
+                                              T.pack (printf "%.2f KiB" cs),
+                                              maybe
+                                                ""
+                                                ( \(imgType, imgRes) ->
+                                                    T.concat
+                                                      [ ", 图片类型: ",
+                                                        imgType,
+                                                        ", 图片尺寸: ",
+                                                        imgRes
+                                                      ]
+                                                )
+                                                imageInfo
+                                            ]
+                                      _ -> pure ()
 
                         -- A single command
                         (c@(Command _ _) : xs) -> myCommandHandler replyF c >> handle xs

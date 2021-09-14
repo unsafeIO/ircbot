@@ -54,6 +54,7 @@ executable ircbot
     , hint
     , http-client
     , http-client-tls
+    , http-types
     , irc-client
     , megaparsec
     , microlens
