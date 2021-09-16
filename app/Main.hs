@@ -199,8 +199,8 @@ sendPic replyF (Right illust) enableShort
             s <- shortenUrl $ imageUrlToCF url
             case s of
               Right x | T.isPrefixOf "https" x -> pure $ T.strip x
-              Right _ -> pure "QAQ"
-              Left err -> pPrint err >> pure "QAQ"
+              Right _ -> pure $ imageUrlToCF url
+              Left err -> pPrint err >> pure (imageUrlToCF url)
           else return ""
 
       telegraph <-
@@ -208,9 +208,9 @@ sendPic replyF (Right illust) enableShort
           then do
             result <- uploadToTelegraph illust
             case result of
-              Left e -> pPrint e >> pure ""
+              Left e -> pPrint e >> pure "未能上传 Telegraph"
               Right (Just x) -> pure x
-              Right _ -> pure "QAQ"
+              Right _ -> pure "未能上传 Telegraph"
           else pure ""
 
       let translated =
