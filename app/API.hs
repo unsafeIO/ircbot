@@ -11,7 +11,7 @@ module API where
 import Config
 import Control.Monad.Catch (try)
 import Control.Monad.IO.Class
-import Data.Aeson (decode, encode, object, withObject, (.:), (.=))
+import Data.Aeson (decode, decodeStrict, encode, object, withObject, (.:), (.=))
 import Data.Aeson.Types (parseMaybe)
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -189,4 +189,23 @@ getImageTypeAndResolution bs = withSystemTempFile "pb-img" $ \fp h -> do
   pure $ case code of
     ExitSuccess
       | [_, ty, res, _, _, _, _, _, _] <- T.split (== ' ') stdout -> pure (ty, res)
+    _ -> Nothing
+
+getVideoResolutionAndDuration :: ByteString -> IO (Maybe FFProbeResult)
+getVideoResolutionAndDuration bs = withSystemTempFile "pb-video" $ \fp h -> do
+  BS.hPut h bs
+  (code, decodeStrict . encodeUtf8 . T.pack -> stdout, _) <-
+    readProcessWithExitCode
+      "ffprobe"
+      [ "-v",
+        "quiet",
+        "-print_format",
+        "json",
+        "-show_format",
+        "-show_streams",
+        fp
+      ]
+      ""
+  pure $ case code of
+    ExitSuccess -> stdout
     _ -> Nothing

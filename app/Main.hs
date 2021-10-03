@@ -118,6 +118,10 @@ main = do
                                           if "image" `T.isPrefixOf` ct
                                             then liftIO $ getImageTypeAndResolution $ toStrict $ responseBody response
                                             else pure Nothing
+                                        videoInfo <-
+                                          if "video" `T.isPrefixOf` ct
+                                            then liftIO $ getVideoResolutionAndDuration $ toStrict $ responseBody response
+                                            else pure Nothing
                                         replyF $
                                           T.concat
                                             [ "文件类型: ",
@@ -134,7 +138,20 @@ main = do
                                                         imgRes
                                                       ]
                                                 )
-                                                imageInfo
+                                                imageInfo,
+                                              maybe
+                                                ""
+                                                ( \FFProbeResult {..} ->
+                                                    T.concat
+                                                      [ ", 视频尺寸: ",
+                                                        width,
+                                                        "x",
+                                                        height,
+                                                        ", 视频长度: ",
+                                                        duration
+                                                      ]
+                                                )
+                                                videoInfo
                                             ]
                                       _ -> pure ()
 

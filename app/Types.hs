@@ -12,9 +12,8 @@ import Control.Concurrent.STM (TQueue, newTQueueIO)
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Data.Aeson
-import Data.ByteString (ByteString)
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 import Data.Time (getCurrentTime)
 import GHC.Conc
@@ -29,7 +28,6 @@ import Servant.Client.Internal.HttpClient (ClientEnv (..))
 import System.Random (randomRIO)
 import Text.Pretty.Simple
 import Web.Pixiv.Auth
-import Web.Pixiv.Types
 import Web.Pixiv.Types.PixivT
 
 type IRCBot = IRC MyState
@@ -102,3 +100,23 @@ newtype GoogleResult = GoogleResult
   deriving (Show, Generic)
 
 instance FromJSON GoogleResult
+
+-----------------------------------------------------------------------------
+
+data FFProbeResult = FFProbeResult
+  { width :: Text,
+    height :: Text,
+    duration :: Text
+  }
+  deriving (Show)
+
+instance FromJSON FFProbeResult where
+  parseJSON = withObject "ffprobe" $ \o -> do
+    let liftMaybe p = p >>= maybe (fail "nothing") pure
+    videoStream <- liftMaybe $ listToMaybe <$> o .: "streams"
+    codec <- videoStream .: "codec_type"
+    guard $ codec == ("video" :: Text)
+    width <- videoStream .: "width"
+    height <- videoStream .: "height"
+    duration <- videoStream .: "duration"
+    pure FFProbeResult {..}
