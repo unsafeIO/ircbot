@@ -36,7 +36,6 @@ import Utils
 import qualified Web.Pixiv.API as P
 import Web.Pixiv.Types
 import qualified Web.Pixiv.Types.Lens as L
-import Web.Pixiv.Utils
 
 getIllustDetail :: Int -> IRCBot (Either ClientError Illust)
 getIllustDetail illustId = runPixivInIRC "getIllustDetail" $ P.getIllustDetail illustId
@@ -145,9 +144,10 @@ hl = try $ do
         _ -> "gg"
   pure (info, resultYi, resultJi)
 
+-- | Upload each large image of an illust. Illust must be multi page
 uploadToTelegraph :: Illust -> IRCBot (Either HttpException (Maybe Text))
 uploadToTelegraph i = try $ do
-  let urls = extractImageUrlsFromIllust i
+  let urls = i ^. L.metaPages ^.. each . L.imageUrls . L.large . _Just
       title = "pixiv-" <> (i ^. L.illustId & show)
       content = imageUrlsToTelegraph $ imageUrlToCF <$> urls
       obj =

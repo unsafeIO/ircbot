@@ -51,6 +51,7 @@ executable ircbot
     , dsl
     , exceptions
     , ghc
+    , gitrev
     , hint
     , http-client
     , http-client-tls
