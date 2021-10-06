@@ -103,6 +103,9 @@ shuffle = PShuffle
 browse :: PQ Done
 browse = PBrowse
 
+siblings' :: PQ [Illust]
+siblings' = lastId >>= pixiv <&> (^. user . userId) >>= work
+
 -----------------------------------------------------------------------------
 -- helper functions
 -----------------------------------------------------------------------------
