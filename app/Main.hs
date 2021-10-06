@@ -169,7 +169,7 @@ main = do
         User "NickServ" -> when (Right ("You are now identified for \STX" <> myUserName <> "\STX.") == y) $ do
           joinChannels myChannels
           send (Nick myNick)
-          forM_ myChannels $ \c -> send (Privmsg c $ Right $ myNick <> " is started. Current version: " <> $(gitHash) <> " (" <> $(gitDescribe) <> ")")
+          forM_ myChannels $ \c -> send (Privmsg c $ Right $ myNick <> " is started. Current version: " <> $(gitDescribe) <> " (" <> $(gitCommitDate) <> ")")
         _ -> return ()
 
       cfg =
