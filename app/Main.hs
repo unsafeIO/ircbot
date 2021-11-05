@@ -253,7 +253,7 @@ sendPic replyF (Right illust) enableShort
             if enableShort then " | 原始链接: pixiv.net/i/" <> idTxt else ""
           ]
 
-      when isUgoira $ do
+      when isUgoira . forkIRC $ do
         result <- runPixivInIRC "processUgoira" $ do
           meta <- P.getUgoiraMetadata illustId
           lbs <- liftToPixivT $ downloadUgoiraToMP4 meta Nothing
@@ -263,7 +263,7 @@ sendPic replyF (Right illust) enableShort
           Right (Just lbs) -> do
             pb <- uploadPB (show illustId <> ".mp4") $ toStrict lbs
             case pb of
-              Right x -> replyF x
+              Right x -> replyF $ "转码完成: " <> x
               Left err -> pPrint err >> replyF "动图上传失败"
           _ -> replyF "动图处理失败"
 
@@ -325,7 +325,7 @@ myCommandHandler replyF (Command cmd args) = case cmd of
   "today" -> do
     result <- hl
     case result of
-      Right ((d, y, j)) -> do
+      Right (d, y, j) -> do
         replyF d
         replyF $ "宜:" <> y
         replyF $ "忌:" <> j

@@ -6,7 +6,7 @@ module STLC where
 import Control.Monad.Except
 import Control.Monad.State
 import Data.Coerce
-import Data.Text.Prettyprint.Doc
+import Prettyprinter
 
 data Term
   = Lit Lit

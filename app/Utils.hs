@@ -54,8 +54,8 @@ extractPUrl :: Text -> Maybe PUrl
 extractPUrl url = illust <|> user
   where
     extract f prefix url = T.stripPrefix prefix url >>= (readMaybe . takeWhile isDigit . T.unpack) >>= pure . f
-    illust = extract PIllust "https://www.pixiv.net/artworks/" url
-    user = extract PUser "https://www.pixiv.net/users/" url
+    illust = extract PIllust "/artworks/" url
+    user = extract PUser "/users/" url
 
 imageUrlToCF :: Text -> Text
 imageUrlToCF = T.replace "i.pximg.net" "setu.libido.workers.dev"

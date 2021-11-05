@@ -17,7 +17,6 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.ByteString.Lazy (toStrict)
 import qualified Data.ByteString.Lazy.Char8 as LBS.Char8
-import Data.List (find)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8, encodeUtf8)
@@ -59,7 +58,7 @@ getTrendingTags = runPixivInIRC "getTrendingTags" $ P.getTrendingTags Nothing
 getUserBookmarks :: Text -> IRCBot (Either ClientError Illust)
 getUserBookmarks username = runPixivInIRC "fetchUserBookmark" $
   randomP $ do
-    u <- headP $ P.searchUser username Nothing 1
+    u <- headP $ P.searchUser username 1
     p <- (\u -> (^. _1) <$> P.getUserBookmarks (u ^. L.user . L.userId) Public Nothing) `traverse` u
     pure $ concat p
 
@@ -69,7 +68,7 @@ getUserBookmarks' userId = runPixivInIRC "getUserBookmarks'" $ randomP $ (^. _1)
 getUserIllusts :: Text -> IRCBot (Either ClientError Illust)
 getUserIllusts username = runPixivInIRC "getUserIllusts" $
   randomP $ do
-    u <- headP $ P.searchUser username Nothing 1
+    u <- headP $ P.searchUser username 1
     p <- (\u -> P.getUserIllusts (u ^. L.user . L.userId) (Just TypeIllust) 1) `traverse` u
     pure $ concat p
 
@@ -174,12 +173,15 @@ canonicalPixivUrl url
     do
       req <- parseRequest $ T.unpack url
       manager <- getManager
-      result <- liftIO $ httpLbs req {requestHeaders = ua} manager
-      let parsed = S.parseTags $ responseBody result
-          f = find (S.tagOpenLit "link" $ S.anyAttrLit ("rel", "canonical")) parsed
-      case f of
-        Just (S.TagOpen _ attrs) -> pure (extractPUrl . decodeUtf8 . toStrict . snd =<< find (\(k, _v) -> k == "href") attrs)
-        _ -> pure Nothing
+      -- Actually we don't need look into the body
+      -- result <- liftIO $ httpLbs req {requestHeaders = ua} manager
+      -- let parsed = S.parseTags $ responseBody result
+          -- f = find (S.tagOpenLit "link" $ S.anyAttrLit ("rel", "canonical")) parsed
+      -- case f of
+        -- Just (S.TagOpen _ attrs) -> pure (extractPUrl . decodeUtf8 . toStrict . snd =<< find (\(k, _v) -> k == "href") attrs)
+        -- _ -> pure Nothing
+      updatedReq <- liftIO $ getOriginalRequest <$>  httpNoBody req {requestHeaders = ua} manager
+      pure . extractPUrl . decodeUtf8 . path $ updatedReq
 canonicalPixivUrl _ = pure Nothing
 
 getImageTypeAndResolution :: ByteString -> IO (Maybe (Text, Text))

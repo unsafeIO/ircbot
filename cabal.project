@@ -1,0 +1,6 @@
+packages: .
+
+source-repository-package
+    type: git
+    location: https://github.com/The-closed-eye-of-love/pixiv
+    tag: 69e2cad41b29ec95ca140a9748a935de921201b3
