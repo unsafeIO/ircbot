@@ -1,4 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Utils where
@@ -16,7 +17,7 @@ import qualified Data.Text.IO as T
 import Data.Time (defaultTimeLocale, formatTime, getCurrentTime)
 import Lens.Micro
 import Network.HTTP.Types (ResponseHeaders)
-import Network.IRC.Client
+import Network.IRC.Client hiding (password)
 import qualified Text.HTML.TagSoup as S
 import Text.Pretty.Simple
 import Text.Read (readMaybe)
@@ -24,18 +25,18 @@ import Types
 import Web.Pixiv
 import Web.Pixiv.Types.Lens
 
-setupTokenRefersh :: IRCBot ()
-setupTokenRefersh = forkIRC . forever $ do
-  token <- runPixivInIRC "refersh token" getAccessToken
-  liftIO $ putStrLn "refersh token result:"
+setupTokenRefresh :: IRCBot ()
+setupTokenRefresh = forkIRC . forever $ do
+  token <- runPixivInIRC "refresh token" getAccessToken
+  liftIO $ putStrLn "refresh token result:"
   pPrint token
   liftIO $ threadDelay 1800000000
 
 forkIRC :: IRC s () -> IRC s ()
 forkIRC x = void $ fork x
 
-identifyNick :: Message Text
-identifyNick = Privmsg "NickServ" $ Right "identify 12345"
+identifyNick :: IRCBot (Message Text)
+identifyNick = getBotConfig >>= \BotConfig {password} -> pure $ Privmsg "NickServ" $ Right $ "identify " <> password
 
 myIRCLogger origin x = do
   now <- getCurrentTime
@@ -53,7 +54,7 @@ data PUrl = PIllust Int | PUser Int deriving (Show)
 extractPUrl :: Text -> Maybe PUrl
 extractPUrl url = illust <|> user
   where
-    extract f prefix url = T.stripPrefix prefix url >>= (readMaybe . takeWhile isDigit . T.unpack) >>= pure . f
+    extract f prefix url = (T.stripPrefix prefix url >>= (readMaybe . takeWhile isDigit . T.unpack)) <&> f
     illust = extract PIllust "/artworks/" url
     user = extract PUser "/users/" url
 

@@ -1,14 +1,11 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module API where
 
-import Config
 import Control.Monad.Catch (try)
 import Control.Monad.IO.Class
 import Data.Aeson (decode, decodeStrict, encode, object, withObject, (.:), (.=))
@@ -112,8 +109,9 @@ withPerformRequest url f =
 
 google :: Text -> IRCBot (Either HttpException (Maybe Text))
 google q = try $ do
+  BotConfig {..} <- getBotConfig
   req <- parseRequest "https://www.googleapis.com/customsearch/v1"
-  let params = [("key", Just googleKey), ("cx", Just googleCX), ("q", Just $ encodeUtf8 q)]
+  let params = [("key", Just $ encodeUtf8 googleKey), ("cx", Just $ encodeUtf8 googleCX), ("q", Just $ encodeUtf8 q)]
   manager <- getManager
   result <- liftIO $ httpLbs (setQueryString params req) manager
   let json = decode $ responseBody result
@@ -146,6 +144,7 @@ hl = try $ do
 -- | Upload each large image of an illust. Illust must be multi page
 uploadToTelegraph :: Illust -> IRCBot (Either HttpException (Maybe Text))
 uploadToTelegraph i = try $ do
+  BotConfig {..} <- getBotConfig
   let urls = i ^. L.metaPages ^.. each . L.imageUrls . L.large . _Just
       title = "pixiv-" <> (i ^. L.illustId & show)
       content = imageUrlsToTelegraph $ imageUrlToCF <$> urls
@@ -154,7 +153,7 @@ uploadToTelegraph i = try $ do
           [ "access_token" .= telegraphToken,
             "title" .= title,
             "content" .= content,
-            "author_name" .= myNick
+            "author_name" .= nick
           ]
   initReq <- parseRequest "https://api.telegra.ph/createPage"
   let req = initReq {method = "POST", requestBody = RequestBodyLBS $ encode obj, requestHeaders = [("Content-Type", "application/json")]}
@@ -176,11 +175,11 @@ canonicalPixivUrl url
       -- Actually we don't need look into the body
       -- result <- liftIO $ httpLbs req {requestHeaders = ua} manager
       -- let parsed = S.parseTags $ responseBody result
-          -- f = find (S.tagOpenLit "link" $ S.anyAttrLit ("rel", "canonical")) parsed
+      -- f = find (S.tagOpenLit "link" $ S.anyAttrLit ("rel", "canonical")) parsed
       -- case f of
-        -- Just (S.TagOpen _ attrs) -> pure (extractPUrl . decodeUtf8 . toStrict . snd =<< find (\(k, _v) -> k == "href") attrs)
-        -- _ -> pure Nothing
-      updatedReq <- liftIO $ getOriginalRequest <$>  httpNoBody req {requestHeaders = ua} manager
+      -- Just (S.TagOpen _ attrs) -> pure (extractPUrl . decodeUtf8 . toStrict . snd =<< find (\(k, _v) -> k == "href") attrs)
+      -- _ -> pure Nothing
+      updatedReq <- liftIO $ getOriginalRequest <$> httpNoBody req {requestHeaders = ua} manager
       pure . extractPUrl . decodeUtf8 . path $ updatedReq
 canonicalPixivUrl _ = pure Nothing
 

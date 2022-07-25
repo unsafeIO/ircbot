@@ -11,7 +11,6 @@
 module Main where
 
 import API
-import Config
 import qualified Control.Exception as CE
 import Control.Monad (forM_, when)
 import Control.Monad.IO.Class (liftIO)
@@ -25,7 +24,7 @@ import Eval
 import GHC.IO (unsafePerformIO)
 import Lens.Micro
 import Network.HTTP.Client (responseBody, responseHeaders)
-import Network.IRC.Client
+import Network.IRC.Client hiding (channels, nick, password)
 import PQ (tagString)
 import Parser
 import Servant.Client (ClientError)
@@ -42,15 +41,16 @@ import Web.Pixiv.Utils
 
 main :: IO ()
 main = do
+  botConfig@BotConfig {..} <- initBotConfig
   let conn =
         tlsConnection (WithDefaultConfig "irc.libera.chat" 6697)
           & logfunc .~ myIRCLogger
-          & username .~ myUserName
-          & realname .~ myRealName
+          & username .~ userName
+          & realname .~ realName
           & onconnect
             .~ ( defaultOnConnect
-                   >> send identifyNick
-                   >> setupTokenRefersh
+                   >> (identifyNick >>= send)
+                   >> setupTokenRefresh
                    >> evalDaemon
                )
 
@@ -59,7 +59,7 @@ main = do
           Left _ -> return ()
           Right msg ->
             forkIRC $ do
-              case parseMessage msg of
+              case parseMessage nick msg of
                 -- Parse error
                 Left _ -> return ()
                 Right (ParsedMessage bridgedSender m) ->
@@ -166,16 +166,16 @@ main = do
         _ -> return ()
 
       cHandler = EventHandler (matchType _Notice) $ \x (_, y) -> case x of
-        User "NickServ" -> when (Right ("You are now identified for \STX" <> myUserName <> "\STX.") == y) $ do
-          joinChannels myChannels
-          send (Nick myNick)
-          forM_ myChannels $ \c -> send (Privmsg c $ Right $ myNick <> " is started. Current version: " <> $(gitDescribe) <> " (" <> $(gitCommitDate) <> ")")
+        User "NickServ" -> when (Right ("You are now identified for \STX" <> userName <> "\STX.") == y) $ do
+          joinChannels channels
+          send (Nick nick)
+          forM_ channels $ \c -> send (Privmsg c $ Right $ nick <> " is started. Current version: " <> $(gitDescribe) <> " (" <> $(gitCommitDate) <> ")")
         _ -> return ()
 
       cfg =
-        defaultInstanceConfig myUserName
+        defaultInstanceConfig userName
           & handlers .~ (myHandler : cHandler : defaultEventHandlers)
-  state <- initMyState pixivToken
+  state <- initMyState botConfig
   let run = runClient conn cfg state in run `CE.catch` (\(e :: CE.SomeException) -> print e >> run)
 
 lastId :: IORef Int

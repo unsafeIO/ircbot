@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -6,8 +5,7 @@
 
 module Parser where
 
-import Config
-import Control.Monad (guard)
+import Control.Monad.Reader
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Void (Void)
@@ -15,19 +13,21 @@ import Text.Megaparsec
 import Text.Megaparsec.Char
 import Text.Regex.TDFA
 
+type Parser = ReaderT Text (Parsec Void Text)
+
 data ParsedMessage = ParsedMessage {bridgedSender :: Maybe Text, entries :: [Entry]}
   deriving (Show)
 
 data Entry = PixivID Int | URL Text | Command Text Text | Eval Text deriving (Show)
 
-findBridgedName :: Parsec Void Text Text
+findBridgedName :: Parser Text
 findBridgedName = do
-  _ <- "["
-  name <- manyTill anySingle "]"
+  _ <- string "["
+  name <- manyTill anySingle $ string "]"
   return $ T.pack name
 
-parseMessage :: Text -> Either (ParseErrorBundle Text Void) ParsedMessage
-parseMessage = parse p "Message"
+parseMessage :: Text -> Text -> Either (ParseErrorBundle Text Void) ParsedMessage
+parseMessage myNick = parse (runReaderT p myNick) "Message"
   where
     p = do
       bridgedSender <- optional findBridgedName
@@ -39,44 +39,45 @@ legal :: Entry -> Bool
 legal (URL a) = not $ "exhentai" `T.isInfixOf` a || "twitter" `T.isInfixOf` a
 legal _ = True
 
-findEval :: Parsec Void Text Entry
+findEval :: Parser Entry
 findEval = do
   _ <- space
-  _ <- ">"
+  _ <- string ">"
   _ <- space
   txt <- manyTill anySingle eof
   return . Eval $ T.pack txt
 
-findPixivId :: Parsec Void Text Entry
+findPixivId :: Parser Entry
 findPixivId = do
-  _ <- manyTill anySingle "#pixiv id"
+  _ <- manyTill anySingle $ string "#pixiv id"
   _ <- space
-  _ <- "="
+  _ <- string "="
   _ <- space
   nums <- some digitChar
   return . PixivID $ read nums
 
-findCommand :: Parsec Void Text Entry
+findCommand :: Parser Entry
 findCommand =
   try
     ( do
+        myNick <- ask
         _ <- skipManyTill anySingle (string (myNick <> ":"))
         space
-        cmd <- manyTill anySingle (() <$ spaceChar <|> eof)
+        cmd <- manyTill anySingle (void spaceChar <|> eof)
         space
         args <- many $ anySingleBut '\''
         guard . not . null $ cmd
         return $ Command (T.pack cmd) (T.pack args)
     )
     <|> do
-      _ <- skipManyTill anySingle "'"
-      cmd <- manyTill anySingle (() <$ spaceChar <|> eof)
+      _ <- skipManyTill anySingle $ string "'"
+      cmd <- manyTill anySingle (void spaceChar <|> eof)
       space
       args <- many $ anySingleBut '\''
       guard . not . null $ cmd
       return $ Command (T.pack cmd) (T.pack args)
 
-findUrl :: Parsec Void Text Entry
+findUrl :: Parser Entry
 findUrl = do
   (T.pack -> chars) <- lookAhead $ manyTill anySingle eof
   case matchRegex chars urlRegex of

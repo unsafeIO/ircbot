@@ -3,7 +3,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ViewPatterns #-}
 
 module Types where
 
@@ -14,6 +13,7 @@ import Control.Monad.Reader
 import Data.Aeson
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 import Data.Time (getCurrentTime)
 import GHC.Conc
@@ -25,6 +25,7 @@ import Network.HTTP.Client.TLS (newTlsManager)
 import Network.IRC.Client
 import Servant.Client (ClientEnv, ClientError)
 import Servant.Client.Internal.HttpClient (ClientEnv (..))
+import System.Environment (getEnv)
 import System.Random (randomRIO)
 import Text.Pretty.Simple
 import Web.Pixiv.Auth
@@ -34,10 +35,23 @@ type IRCBot = IRC MyState
 
 type EvalQueue = TQueue (Interpreter ())
 
+data BotConfig = BotConfig
+  { nick :: Text,
+    userName :: Text,
+    realName :: Text,
+    password :: Text,
+    channels :: [Text],
+    pixivToken :: Text,
+    googleKey :: Text,
+    googleCX :: Text,
+    telegraphToken :: Text
+  }
+
 data MyState = MyState
   { pixivState :: MVar PixivState,
     clientEnv :: ClientEnv,
-    evalQueue :: EvalQueue
+    evalQueue :: EvalQueue,
+    botConfig :: BotConfig
   }
 
 runPixivInIRC :: String -> PixivT IO a -> IRCBot (Either ClientError a)
@@ -63,10 +77,16 @@ getEvalQueue = do
   MyState {evalQueue} <- liftIO $ readTVarIO $ ircState ^. userState
   pure evalQueue
 
+getBotConfig :: IRCBot BotConfig
+getBotConfig = do
+  ircState <- getIRCState
+  MyState {botConfig} <- liftIO $ readTVarIO $ ircState ^. userState
+  pure botConfig
+
 randomP :: (MonadIO m) => PixivT m [a] -> PixivT m a
 randomP m = do
   xs <- m
-  rand <- liftIO $ randomRIO (0, length xs -1)
+  rand <- liftIO $ randomRIO (0, length xs - 1)
   pure $ xs !! rand
 
 headP :: (MonadIO m) => PixivT m [a] -> PixivT m (Maybe a)
@@ -74,12 +94,25 @@ headP m = do
   xs <- m
   pure $ xs ^? _head
 
-initMyState :: Text -> IO MyState
-initMyState (Token -> token) = do
+initBotConfig :: IO BotConfig
+initBotConfig = do
+  nick <- T.pack <$> getEnv "NICK"
+  userName <- T.pack <$> getEnv "USERNAME"
+  realName <- T.pack <$> getEnv "REALNAME"
+  password <- T.pack <$> getEnv "PASSWORD"
+  channels <- T.splitOn "," . T.pack <$> getEnv "CHANNELS"
+  pixivToken <- T.pack <$> getEnv "PIXIV_TOKEN"
+  googleKey <- T.pack <$> getEnv "GOOGLE_KEY"
+  googleCX <- T.pack <$> getEnv "GOOGLE_CX"
+  telegraphToken <- T.pack <$> getEnv "TELEGRAPH_TOKEN"
+  pure $ BotConfig {..}
+
+initMyState :: BotConfig -> IO MyState
+initMyState botConfig = do
   manager <- liftIO newTlsManager
   clientEnv <- mkDefaultClientEnv manager
   t <- getCurrentTime
-  pixivState <- liftIO $ newMVar . flip PixivState (Just "zh-CN") =<< computeTokenState manager (RefreshToken token) t
+  pixivState <- liftIO $ newMVar . flip PixivState (Just "zh-CN") =<< computeTokenState manager (RefreshToken . Token $ pixivToken botConfig) t
   evalQueue <- newTQueueIO
   pure MyState {..}
 

@@ -34,7 +34,6 @@ executable ircbot
   hs-source-dirs:   app
   other-modules:
     API
-    Config
     Eval
     Parser
     STLC
@@ -46,7 +45,7 @@ executable ircbot
 
   build-depends:
     , aeson
-    , base             >=4.7 && <5
+    , base             >=4.7   && <5
     , bytestring
     , dsl
     , exceptions
@@ -60,7 +59,7 @@ executable ircbot
     , megaparsec
     , microlens
     , mtl
-    , pixiv
+    , pixiv            ==0.1.1
     , pretty-simple
     , prettyprinter
     , process
