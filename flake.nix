@@ -16,8 +16,6 @@
         };
       in with pkgs; {
         packages.default = ircbot;
-        packages.pq =
-          haskellPackages.ghcWithPackages (p: [ pixiv p.microlens ]);
         devShells.default = ircbot-dev.envFunc { };
       }) // {
         overlays.default = final: prev:
@@ -30,8 +28,24 @@
             ircbot = hpkgs.callCabal2nix "ircbot" ./. { };
           in with prev;
           with haskell.lib; {
-            inherit ircbot;
-            inherit (hpkgs) pixiv;
+            ircbot = let
+              unwrapped = justStaticExecutables ircbot;
+              runtimeGHC = haskellPackages.ghcWithPackages
+                (p: with p; [ pixiv.packages.${system}.default microlens ]);
+            in stdenv.mkDerivation {
+              name = "ircbot-wrapped";
+              buildInputs = [ runtimeGHC unwrapped makeWrapper ];
+              dontUnpack = true;
+              dontBuild = true;
+              installPhase = ''
+                mkdir -p $out/bin
+                ln -s ${unwrapped}/bin/ircbot $out/bin/ircbot
+                wrapProgram $out/bin/ircbot \
+                  --set GHC_LIB_DIR "${runtimeGHC}/lib/ghc-${runtimeGHC.version}" \
+                  --set GHC_BIN_DIR "${runtimeGHC}/bin" \
+                  --set GHC_PACKAGE_PATH "${runtimeGHC}/lib/ghc-${runtimeGHC.version}/package.conf.d" 
+              '';
+            };
             ircbot-dev =
               addBuildTools ircbot [ haskell-language-server cabal-install ];
           };

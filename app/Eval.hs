@@ -74,7 +74,7 @@ evalEnqueue action = do
   liftIO $
     atomically $
       writeTQueue chan $ try action >>= liftIO . putMVar var
-  liftIO $ timeout 5000000 $ readMVar var
+  liftIO $ timeout 10000000 $ readMVar var
 
 setupEval :: Interpreter ()
 setupEval = do
