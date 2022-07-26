@@ -29,7 +29,12 @@
           in with prev;
           with haskell.lib; {
             ircbot = let
-              unwrapped = justStaticExecutables ircbot;
+              unwrapped = justStaticExecutables (overrideCabal ircbot (drv: {
+                postPatch = ''
+                  substituteInPlace app/Eval.hs \
+                    --replace 'dsl/PQ.hs' '${drv.src}/dsl/PQ.hs'
+                '';
+              }));
               runtimeGHC = haskellPackages.ghcWithPackages
                 (p: with p; [ pixiv.packages.${system}.default microlens ]);
             in stdenv.mkDerivation {
