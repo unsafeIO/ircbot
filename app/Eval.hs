@@ -23,12 +23,14 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Debug.Trace (traceIO)
-import GHC (getPrintUnqual, getSessionDynFlags, findModule, mkModuleName, getModuleInfo, modInfoExports, lookupName, TyThing (AnId))
+import GHC (getPrintUnqual, getSessionDynFlags, setSessionDynFlags, findModule, mkModuleName, getModuleInfo, modInfoExports, lookupName, TyThing (AnId), DynFlags (..))
 #if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
+import DynFlags (PackageDBFlag(..), PkgConfRef(..))
 import InteractiveEval (isDecl, runDecls)
 import Outputable (Outputable, ppr, showSDocForUser)
 import PprTyThing (pprTyThingHdr)
 #else
+import GHC.Driver.Session (PackageDBFlag(..), PkgDbRef (..))
 import GHC.Runtime.Eval (isDecl, runDecls)
 import GHC.Utils.Outputable (Outputable, ppr, showSDocForUser)
 import GHC.Parser.Lexer (mkParserFlags)
@@ -44,6 +46,7 @@ import Types
 import Utils (forkIRC)
 import Web.Pixiv (Illust, IllustType (TypeIllust), Publicity (Public), SearchTarget (PartialMatchForTags))
 import Web.Pixiv.API
+import System.Environment (lookupEnv)
 
 showGHC :: (MonadInterpreter m, Outputable a) => a -> m Text
 showGHC a = do
@@ -89,6 +92,16 @@ setupEval = do
              ExtendedDefaultRules
            ]
     ]
+  pkgDB <- liftIO $ lookupEnv "GHC_PACKAGE_PATH"
+  runGhc $ maybe (pure ()) (\x -> getSessionDynFlags >>= \df -> setSessionDynFlags df {
+    packageDBFlags = 
+#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
+      PackageDB (PkgConfFile x)
+#else
+      PackageDB (PkgDbPath x)
+#endif
+     : packageDBFlags df
+     } ) pkgDB
   loadModules ["dsl/PQ.hs"]
   setImportsQ
     [ ("Prelude", Nothing),
