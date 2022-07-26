@@ -1,9 +1,7 @@
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wall #-}
@@ -19,7 +17,6 @@ import Data.IORef
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Development.GitRev
 import Eval
 import GHC.IO (unsafePerformIO)
 import Lens.Micro
@@ -171,7 +168,6 @@ main = do
         User "NickServ" -> when (Right ("You are now identified for \STX" <> userName <> "\STX.") == y) $ do
           joinChannels channels
           send (Nick nick)
-          forM_ channels $ \c -> send (Privmsg c $ Right $ nick <> " started. Current version: " <> $(gitDescribe) <> " (" <> $(gitCommitDate) <> ")")
         _ -> return ()
 
       cfg =

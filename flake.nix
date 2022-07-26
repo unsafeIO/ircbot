@@ -16,6 +16,8 @@
         };
       in with pkgs; {
         packages.default = ircbot;
+        packages.pq =
+          haskellPackages.ghcWithPackages (p: [ pixiv p.microlens ]);
         devShells.default = ircbot-dev.envFunc { };
       }) // {
         overlays.default = final: prev:
@@ -29,6 +31,7 @@
           in with prev;
           with haskell.lib; {
             inherit ircbot;
+            inherit (hpkgs) pixiv;
             ircbot-dev =
               addBuildTools ircbot [ haskell-language-server cabal-install ];
           };
