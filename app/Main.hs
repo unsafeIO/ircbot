@@ -28,6 +28,7 @@ import Network.IRC.Client hiding (channels, nick, password)
 import PQ (tagString)
 import Parser
 import Servant.Client (ClientError)
+import System.IO
 import Text.Pretty.Simple
 import Text.Printf (printf)
 import Text.Read (readMaybe)
@@ -41,6 +42,7 @@ import Web.Pixiv.Utils
 
 main :: IO ()
 main = do
+  hSetBuffering stdout LineBuffering
   botConfig@BotConfig {..} <- initBotConfig
   let conn =
         tlsConnection (WithDefaultConfig "irc.libera.chat" 6697)
@@ -169,7 +171,7 @@ main = do
         User "NickServ" -> when (Right ("You are now identified for \STX" <> userName <> "\STX.") == y) $ do
           joinChannels channels
           send (Nick nick)
-          forM_ channels $ \c -> send (Privmsg c $ Right $ nick <> " is started. Current version: " <> $(gitDescribe) <> " (" <> $(gitCommitDate) <> ")")
+          forM_ channels $ \c -> send (Privmsg c $ Right $ nick <> " started. Current version: " <> $(gitDescribe) <> " (" <> $(gitCommitDate) <> ")")
         _ -> return ()
 
       cfg =
