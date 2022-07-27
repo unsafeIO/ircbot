@@ -39,7 +39,7 @@
                 (p: with p; [ pixiv.packages.${system}.default microlens ]);
             in stdenv.mkDerivation {
               name = "ircbot-wrapped";
-              buildInputs = [ runtimeGHC unwrapped makeWrapper ];
+              buildInputs = [ runtimeGHC unwrapped makeWrapper ffmpeg ];
               dontUnpack = true;
               dontBuild = true;
               installPhase = ''
@@ -48,7 +48,8 @@
                 wrapProgram $out/bin/ircbot \
                   --set GHC_LIB_DIR "${runtimeGHC}/lib/ghc-${runtimeGHC.version}" \
                   --set GHC_BIN_DIR "${runtimeGHC}/bin" \
-                  --set GHC_PACKAGE_PATH "${runtimeGHC}/lib/ghc-${runtimeGHC.version}/package.conf.d" 
+                  --set GHC_PACKAGE_PATH "${runtimeGHC}/lib/ghc-${runtimeGHC.version}/package.conf.d" \
+                  --prefix PATH : ${ffmpeg}/bin
               '';
             };
             ircbot-dev =
