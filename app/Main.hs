@@ -168,6 +168,8 @@ main = do
         User "NickServ" -> when (Right ("You are now identified for \STX" <> userName <> "\STX.") == y) $ do
           joinChannels channels
           send (Nick nick)
+          -- initialize eval session for PQ
+          evalIRC "Day" (const $ pure ()) (\_ _ -> pure ()) lastId
         _ -> return ()
 
       cfg =

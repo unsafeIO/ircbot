@@ -49,7 +49,8 @@
                   --set GHC_LIB_DIR "${runtimeGHC}/lib/ghc-${runtimeGHC.version}" \
                   --set GHC_BIN_DIR "${runtimeGHC}/bin" \
                   --set GHC_PACKAGE_PATH "${runtimeGHC}/lib/ghc-${runtimeGHC.version}/package.conf.d" \
-                  --prefix PATH : ${ffmpeg}/bin
+                  --prefix PATH : ${ffmpeg}/bin \
+                  --prefix PATH : ${imagemagick}/bin
               '';
             };
             ircbot-dev =
