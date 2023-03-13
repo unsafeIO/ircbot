@@ -20,14 +20,15 @@ import qualified Data.Text as T
 import Eval
 import GHC.IO (unsafePerformIO)
 import Lens.Micro
-import Network.HTTP.Client (responseBody, responseHeaders)
+-- import Network.HTTP.Client (responseBody, responseHeaders)
+import Network.HTTP.Client (responseBody)
 import Network.IRC.Client hiding (channels, nick, password)
 import PQ (tagString)
 import Parser
 import Servant.Client (ClientError)
 import System.IO
 import Text.Pretty.Simple
-import Text.Printf (printf)
+-- import Text.Printf (printf)
 import Text.Read (readMaybe)
 import Types
 import Utils
@@ -112,49 +113,49 @@ main = do
                               Right response -> do
                                 case extractWebpageTitle $ responseBody response of
                                   Just title -> replyF $ "⇪网页标题: " <> title
-                                  _ ->
-                                    case extractContentSizeAndType $ responseHeaders response of
-                                      Just (ct, cs) -> do
-                                        imageInfo <-
-                                          if "image" `T.isPrefixOf` ct
-                                            then liftIO $ getImageTypeAndResolution $ toStrict $ responseBody response
-                                            else pure Nothing
-                                        videoInfo <-
-                                          if "video" `T.isPrefixOf` ct
-                                            then liftIO $ getVideoResolutionAndDuration $ toStrict $ responseBody response
-                                            else pure Nothing
-                                        replyF $
-                                          T.concat
-                                            [ "文件类型: ",
-                                              ct,
-                                              ", 文件大小: ",
-                                              T.pack (printf "%.2f KiB" cs),
-                                              maybe
-                                                ""
-                                                ( \(imgType, imgRes) ->
-                                                    T.concat
-                                                      [ ", 图片类型: ",
-                                                        imgType,
-                                                        ", 图片尺寸: ",
-                                                        imgRes
-                                                      ]
-                                                )
-                                                imageInfo,
-                                              maybe
-                                                ""
-                                                ( \FFProbeResult {..} ->
-                                                    T.concat
-                                                      [ ", 视频尺寸: ",
-                                                        width,
-                                                        "x",
-                                                        height,
-                                                        ", 视频长度: ",
-                                                        duration
-                                                      ]
-                                                )
-                                                videoInfo
-                                            ]
-                                      _ -> pure ()
+                                  _ -> pure ()
+                                    -- case extractContentSizeAndType $ responseHeaders response of
+                                    --   Just (ct, cs) -> do
+                                    --     imageInfo <-
+                                    --       if "image" `T.isPrefixOf` ct
+                                    --         then liftIO $ getImageTypeAndResolution $ toStrict $ responseBody response
+                                    --         else pure Nothing
+                                    --     videoInfo <-
+                                    --       if "video" `T.isPrefixOf` ct
+                                    --         then liftIO $ getVideoResolutionAndDuration $ toStrict $ responseBody response
+                                    --         else pure Nothing
+                                    --     replyF $
+                                    --       T.concat
+                                    --         [ "文件类型: ",
+                                    --           ct,
+                                    --           ", 文件大小: ",
+                                    --           T.pack (printf "%.2f KiB" cs),
+                                    --           maybe
+                                    --             ""
+                                    --             ( \(imgType, imgRes) ->
+                                    --                 T.concat
+                                    --                   [ ", 图片类型: ",
+                                    --                     imgType,
+                                    --                     ", 图片尺寸: ",
+                                    --                     imgRes
+                                    --                   ]
+                                    --             )
+                                    --             imageInfo,
+                                    --           maybe
+                                    --             ""
+                                    --             ( \FFProbeResult {..} ->
+                                    --                 T.concat
+                                    --                   [ ", 视频尺寸: ",
+                                    --                     width,
+                                    --                     "x",
+                                    --                     height,
+                                    --                     ", 视频长度: ",
+                                    --                     duration
+                                    --                   ]
+                                    --             )
+                                    --             videoInfo
+                                    --         ]
+                                    --   _ -> pure ()
 
                         -- A single command
                         (c@(Command _ _) : xs) -> myCommandHandler replyF c >> handle xs
