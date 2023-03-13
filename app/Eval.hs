@@ -23,16 +23,24 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Debug.Trace (traceIO)
-import GHC (getPrintUnqual, getSessionDynFlags, findModule, mkModuleName, getModuleInfo, modInfoExports, lookupName, TyThing (AnId))
-#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
-import InteractiveEval (isDecl, runDecls)
-import Outputable (Outputable, ppr, showSDocForUser)
-import PprTyThing (pprTyThingHdr)
-#else
+import GHC (getPrintUnqual, getSessionDynFlags, findModule, mkModuleName, getModuleInfo, modInfoExports, lookupName, TyThing (AnId), DynFlags, PrintUnqualified)
+#if MIN_VERSION_GLASGOW_HASKELL(9,2,0,0)
+import GHC.Runtime.Eval (runDecls)
+import GHC.Parser.Utils (isDecl)
+import GHC.Utils.Outputable (Outputable, ppr, SDoc)
+import GHC.Driver.Ppr (showSDocForUser)
+import GHC.Types.TyThing.Ppr (pprTyThingHdr)
+import GHC.Driver.Config (initParserOpts)
+import GHC.Unit.State (emptyUnitState)
+#elif MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
 import GHC.Runtime.Eval (isDecl, runDecls)
-import GHC.Utils.Outputable (Outputable, ppr, showSDocForUser)
+import GHC.Utils.Outputable (Outputable, ppr, showSDocForUser, SDoc)
 import GHC.Parser.Lexer (mkParserFlags)
 import GHC.Core.Ppr.TyThing (pprTyThingHdr)
+#elif MIN_VERSION_GLASGOW_HASKELL(8,2,0,0)
+import InteractiveEval (isDecl, runDecls)
+import Outputable (Outputable, ppr, showSDocForUser, SDoc)
+import PprTyThing (pprTyThingHdr)
 #endif
 import Language.Haskell.Interpreter
 import PQ (Done, IllustLike (toIllusts), PQ (..))
@@ -48,7 +56,14 @@ import Web.Pixiv.API
 showGHC :: (MonadInterpreter m, Outputable a) => a -> m Text
 showGHC a = do
   (unqual, df) <- runGhc $ getPrintUnqual >>= \x -> (x,) <$> getSessionDynFlags
-  pure $ T.pack $ showSDocForUser df unqual (ppr a)
+  pure $ T.pack $ showSDocForUser' df unqual (ppr a)
+
+showSDocForUser' :: DynFlags -> PrintUnqualified -> SDoc -> String
+#if MIN_VERSION_GLASGOW_HASKELL(9,2,0,0)
+showSDocForUser' df unq doc = showSDocForUser df emptyUnitState unq doc
+#else
+showSDocForUser = showSDocForUser
+#endif
 
 traceI :: String -> Interpreter ()
 traceI = liftIO . traceIO
@@ -106,10 +121,12 @@ evalIRC :: Text -> (Text -> IRCBot ()) -> (Bool -> Illust -> IRCBot ()) -> IORef
 evalIRC (T.unpack -> msg) replyF sendPic lastRef = do
   result <- evalEnqueue $ do
     isMsgDecl <- runGhc $ getSessionDynFlags >>= \df ->
-#if !MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
+#if MIN_VERSION_GLASGOW_HASKELL(9,2,0,0)
+      let pf = initParserOpts df
+#elif MIN_VERSION_GLASGOW_HASKELL(9,0,0,0)
+      let pf = mkkParserFlags df
+#elif MIN_VERSION_GLASGOW_HASKELL(8,2,0,0)
       let pf = df
-#else
-      let pf = mkParserFlags df
 #endif
       in pure (isDecl pf msg)
     if isMsgDecl
@@ -166,7 +183,7 @@ evalIRC (T.unpack -> msg) replyF sendPic lastRef = do
             mInfo <- fromJust <$> (findModule (mkModuleName "PQ") Nothing >>= getModuleInfo)
             exports <- catMaybes <$> mapM lookupName (modInfoExports mInfo)
             (unqual, df)<- getPrintUnqual >>= \x -> (x,) <$> getSessionDynFlags
-            pure [T.pack $ showSDocForUser df unqual (pprTyThingHdr ty) | ty@(AnId _) <- exports]
+            pure [T.pack $ showSDocForUser' df unqual (pprTyThingHdr ty) | ty@(AnId _) <- exports]
         lift $ case r of
           Just(Right xs) -> do
             replyF $ T.intercalate ", " xs

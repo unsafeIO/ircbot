@@ -16,7 +16,7 @@
         };
       in with pkgs; {
         packages.default = ircbot;
-        devShells.default = ircbot-dev.envFunc { };
+        devShells.default = ircbot-dev.envFunc { withHoogle = true; };
       }) // {
         overlays.default = final: prev:
           let
