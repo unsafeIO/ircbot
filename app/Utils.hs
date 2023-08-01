@@ -1,5 +1,4 @@
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Utils where
@@ -8,6 +7,7 @@ import Control.Applicative ((<|>))
 import Control.Concurrent
 import Control.Monad (forever, void)
 import Control.Monad.IO.Class
+import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy.Char8 as LBS.Char8
 import Data.Char (isDigit)
 import Data.Text (Text)
@@ -35,9 +35,7 @@ setupTokenRefresh = forkIRC . forever $ do
 forkIRC :: IRC s () -> IRC s ()
 forkIRC x = void $ fork x
 
-identifyNick :: IRCBot (Message Text)
-identifyNick = getBotConfig >>= \BotConfig {password} -> pure $ Privmsg "NickServ" $ Right $ "identify " <> password
-
+myIRCLogger :: Origin -> ByteString -> IO ()
 myIRCLogger origin x = do
   now <- getCurrentTime
   T.putStrLn $
@@ -47,7 +45,8 @@ myIRCLogger origin x = do
         decodeUtf8 x
       ]
 
-joinChannels l = mapM_ (send . Join) l
+joinChannels :: [Text] -> IRC s ()
+joinChannels = mapM_ (send . Join)
 
 data PUrl = PIllust Int | PUser Int deriving (Show)
 

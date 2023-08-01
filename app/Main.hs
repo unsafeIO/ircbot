@@ -25,10 +25,11 @@ import Network.HTTP.Client (responseBody)
 import Network.IRC.Client hiding (channels, nick, password)
 import PQ (tagString)
 import Parser
+-- import Text.Printf (printf)
+import SASL
 import Servant.Client (ClientError)
 import System.IO
 import Text.Pretty.Simple
--- import Text.Printf (printf)
 import Text.Read (readMaybe)
 import Types
 import Utils
@@ -48,10 +49,13 @@ main = do
           & username .~ userName
           & realname .~ realName
           & onconnect
-            .~ ( defaultOnConnect
-                   >> (identifyNick >>= send)
-                   >> setupTokenRefresh
-                   >> evalDaemon
+            .~ ( do
+                   defaultOnConnect
+                   sendSASLCapReq
+                   sendAuthPlain
+                   sendSASLPayload $ mkPlainSASL nick nick password
+                   setupTokenRefresh
+                   evalDaemon
                )
 
       myHandler = EventHandler (matchType _Privmsg) $ \s (_, y) -> case s of
@@ -114,48 +118,48 @@ main = do
                                 case extractWebpageTitle $ responseBody response of
                                   Just title -> replyF $ "⇪网页标题: " <> title
                                   _ -> pure ()
-                                    -- case extractContentSizeAndType $ responseHeaders response of
-                                    --   Just (ct, cs) -> do
-                                    --     imageInfo <-
-                                    --       if "image" `T.isPrefixOf` ct
-                                    --         then liftIO $ getImageTypeAndResolution $ toStrict $ responseBody response
-                                    --         else pure Nothing
-                                    --     videoInfo <-
-                                    --       if "video" `T.isPrefixOf` ct
-                                    --         then liftIO $ getVideoResolutionAndDuration $ toStrict $ responseBody response
-                                    --         else pure Nothing
-                                    --     replyF $
-                                    --       T.concat
-                                    --         [ "文件类型: ",
-                                    --           ct,
-                                    --           ", 文件大小: ",
-                                    --           T.pack (printf "%.2f KiB" cs),
-                                    --           maybe
-                                    --             ""
-                                    --             ( \(imgType, imgRes) ->
-                                    --                 T.concat
-                                    --                   [ ", 图片类型: ",
-                                    --                     imgType,
-                                    --                     ", 图片尺寸: ",
-                                    --                     imgRes
-                                    --                   ]
-                                    --             )
-                                    --             imageInfo,
-                                    --           maybe
-                                    --             ""
-                                    --             ( \FFProbeResult {..} ->
-                                    --                 T.concat
-                                    --                   [ ", 视频尺寸: ",
-                                    --                     width,
-                                    --                     "x",
-                                    --                     height,
-                                    --                     ", 视频长度: ",
-                                    --                     duration
-                                    --                   ]
-                                    --             )
-                                    --             videoInfo
-                                    --         ]
-                                    --   _ -> pure ()
+                        -- case extractContentSizeAndType $ responseHeaders response of
+                        --   Just (ct, cs) -> do
+                        --     imageInfo <-
+                        --       if "image" `T.isPrefixOf` ct
+                        --         then liftIO $ getImageTypeAndResolution $ toStrict $ responseBody response
+                        --         else pure Nothing
+                        --     videoInfo <-
+                        --       if "video" `T.isPrefixOf` ct
+                        --         then liftIO $ getVideoResolutionAndDuration $ toStrict $ responseBody response
+                        --         else pure Nothing
+                        --     replyF $
+                        --       T.concat
+                        --         [ "文件类型: ",
+                        --           ct,
+                        --           ", 文件大小: ",
+                        --           T.pack (printf "%.2f KiB" cs),
+                        --           maybe
+                        --             ""
+                        --             ( \(imgType, imgRes) ->
+                        --                 T.concat
+                        --                   [ ", 图片类型: ",
+                        --                     imgType,
+                        --                     ", 图片尺寸: ",
+                        --                     imgRes
+                        --                   ]
+                        --             )
+                        --             imageInfo,
+                        --           maybe
+                        --             ""
+                        --             ( \FFProbeResult {..} ->
+                        --                 T.concat
+                        --                   [ ", 视频尺寸: ",
+                        --                     width,
+                        --                     "x",
+                        --                     height,
+                        --                     ", 视频长度: ",
+                        --                     duration
+                        --                   ]
+                        --             )
+                        --             videoInfo
+                        --         ]
+                        --   _ -> pure ()
 
                         -- A single command
                         (c@(Command _ _) : xs) -> myCommandHandler replyF c >> handle xs
@@ -165,19 +169,15 @@ main = do
                    in liftIO (print m) >> handle m
         _ -> return ()
 
-      cHandler = EventHandler (matchType _Notice) $ \x (_, y) -> case x of
-        User "NickServ" -> when (Right ("You are now identified for \STX" <> userName <> "\STX.") == y) $ do
-          joinChannels channels
-          send (Nick nick)
-          -- initialize eval session for PQ
-          evalIRC "Day" (const $ pure ()) (\_ _ -> pure ()) lastId
-        _ -> return ()
-
       cfg =
-        defaultInstanceConfig userName
-          & handlers .~ (myHandler : cHandler : defaultEventHandlers)
+        defaultInstanceConfig nick
+          & handlers .~ (myHandler : saslHandlers (joinChannels channels) <> defaultEventHandlers)
   state <- initMyState botConfig
   let run = runClient conn cfg state in run `CE.catch` (\(e :: CE.SomeException) -> print e >> run)
+
+-- initialize eval session for PQ
+testEval :: IRCBot ()
+testEval = evalIRC "Day" (const $ pure ()) (\_ _ -> pure ()) lastId
 
 lastId :: IORef Int
 lastId = unsafePerformIO $ newIORef (-1)
@@ -207,73 +207,73 @@ sendUserAndAnIllust replyF (Left err) = pPrint err >> replyF (T.pack $ show err)
 sendPic :: (Text -> IRCBot ()) -> Either ClientError P.Illust -> Bool -> IRCBot ()
 sendPic replyF (Right illust) enableShort
   | Just url <- extractLargeImageUrl $ illust ^. J.imageUrls =
-    do
-      let isUgoira = illust ^. J.illustType == P.TypeUgoira
-          illustId = illust ^. J.illustId
-          isSingle = isSinglePageIllust illust
-          enableShort' = enableShort && not isUgoira && isSingle
-          enableTelegraph = enableShort && not isUgoira && not isSingle
-      -- make short url if enable
-      short <-
-        if enableShort'
-          then do
-            s <- shortenUrl $ imageUrlToCF url
-            case s of
-              Right x | T.isPrefixOf "https" x -> pure $ T.strip x
-              Right _ -> pure $ imageUrlToCF url
-              Left err -> pPrint err >> pure (imageUrlToCF url)
-          else return ""
+      do
+        let isUgoira = illust ^. J.illustType == P.TypeUgoira
+            illustId = illust ^. J.illustId
+            isSingle = isSinglePageIllust illust
+            enableShort' = enableShort && not isUgoira && isSingle
+            enableTelegraph = enableShort && not isUgoira && not isSingle
+        -- make short url if enable
+        short <-
+          if enableShort'
+            then do
+              s <- shortenUrl $ imageUrlToCF url
+              case s of
+                Right x | T.isPrefixOf "https" x -> pure $ T.strip x
+                Right _ -> pure $ imageUrlToCF url
+                Left err -> pPrint err >> pure (imageUrlToCF url)
+            else return ""
 
-      telegraph <-
-        if enableTelegraph
-          then do
-            result <- uploadToTelegraph illust
-            case result of
-              Left e -> pPrint e >> pure "未能上传 Telegraph"
-              Right (Just x) -> pure x
-              Right _ -> pure "未能上传 Telegraph"
-          else pure ""
+        telegraph <-
+          if enableTelegraph
+            then do
+              result <- uploadToTelegraph illust
+              case result of
+                Left e -> pPrint e >> pure "未能上传 Telegraph"
+                Right (Just x) -> pure x
+                Right _ -> pure "未能上传 Telegraph"
+            else pure ""
 
-      let translated =
-            fmap (\it -> "#" <> replaceChars it) $
-              (illust ^. J.tags) <&> (\x -> case x ^. J.translatedName of Just t -> t; Nothing -> x ^. J.name)
-          tagTxt = T.intercalate " " translated
-          messy = tagString illust
-          idTxt = T.pack (show illustId)
+        let translated =
+              fmap (\it -> "#" <> replaceChars it) $
+                (illust ^. J.tags) <&> (\x -> case x ^. J.translatedName of Just t -> t; Nothing -> x ^. J.name)
+            tagTxt = T.intercalate " " translated
+            messy = tagString illust
+            idTxt = T.pack (show illustId)
 
-      -- send tags and short url
-      replyF $
-        T.concat
-          [ "⇪Pixiv id: " <> idTxt,
-            " | 作者: #" <> illust ^. J.user . J.name,
-            " | 标题: " <> illust ^. J.title,
-            " | 标签: " <> tagTxt,
-            if enableShort' then " | " <> short else "",
-            if isUgoira then " | 转码中" else "",
-            if enableTelegraph then " | " <> telegraph else "",
-            if enableShort then " | 原始链接: pixiv.net/i/" <> idTxt else ""
-          ]
+        -- send tags and short url
+        replyF $
+          T.concat
+            [ "⇪Pixiv id: " <> idTxt,
+              " | 作者: #" <> illust ^. J.user . J.name,
+              " | 标题: " <> illust ^. J.title,
+              " | 标签: " <> tagTxt,
+              if enableShort' then " | " <> short else "",
+              if isUgoira then " | 转码中" else "",
+              if enableTelegraph then " | " <> telegraph else "",
+              if enableShort then " | 原始链接: pixiv.net/i/" <> idTxt else ""
+            ]
 
-      when isUgoira . forkIRC $ do
-        result <- runPixivInIRC "processUgoira" $ do
-          meta <- P.getUgoiraMetadata illustId
-          lbs <- liftToPixivT $ downloadUgoiraToMP4 meta Nothing
-          liftIO $ putStrLn $ maybe "No stderr" fst lbs
-          pure $ snd <$> lbs
-        case result of
-          Right (Just lbs) -> do
-            pb <- uploadPB (show illustId <> ".mp4") $ toStrict lbs
-            case pb of
-              Right x -> replyF $ "转码完成: " <> x
-              Left err -> pPrint err >> replyF "动图上传失败"
-          _ -> replyF "动图处理失败"
+        when isUgoira . forkIRC $ do
+          result <- runPixivInIRC "processUgoira" $ do
+            meta <- P.getUgoiraMetadata illustId
+            lbs <- liftToPixivT $ downloadUgoiraToMP4 meta Nothing
+            liftIO $ putStrLn $ maybe "No stderr" fst lbs
+            pure $ snd <$> lbs
+          case result of
+            Right (Just lbs) -> do
+              pb <- uploadPB (show illustId <> ".mp4") $ toStrict lbs
+              case pb of
+                Right x -> replyF $ "转码完成: " <> x
+                Left err -> pPrint err >> replyF "动图上传失败"
+            _ -> replyF "动图处理失败"
 
-      -- 性癖
-      when (anySub ["漏尿", "放尿", "お漏らし", "おもらし", "おしっこ"] messy) $
-        replyF "⇪ #oc诱捕器"
+        -- 性癖
+        when (anySub ["漏尿", "放尿", "お漏らし", "おもらし", "おしっこ"] messy) $
+          replyF "⇪ #oc诱捕器"
 
-      when (anySub ["調教", "束縛", "機械姦", "緊縛", "縛り", "鼻フック", "監禁", "口枷"] messy) $
-        replyF "⇪ #空指针诱捕器"
+        when (anySub ["調教", "束縛", "機械姦", "緊縛", "縛り", "鼻フック", "監禁", "口枷"] messy) $
+          replyF "⇪ #空指针诱捕器"
   | otherwise = replyF "Unable to extract image url from illust."
 sendPic replyF (Left err) _ = pPrint err >> replyF "未能从 pixiv 获取插图"
 
