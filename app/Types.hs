@@ -11,9 +11,11 @@ import Control.Concurrent.STM (TQueue, newTQueueIO)
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Data.Aeson
+import Data.ByteString (ByteString)
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as LT
 import Data.Time (getCurrentTime)
 import GHC.Conc
@@ -25,7 +27,8 @@ import Network.HTTP.Client.TLS (newTlsManager)
 import Network.IRC.Client
 import Servant.Client (ClientEnv, ClientError)
 import Servant.Client.Internal.HttpClient (ClientEnv (..))
-import System.Environment (getEnv)
+import System.Environment (getEnv, lookupEnv)
+import System.Environment.Blank (getEnvDefault)
 import System.Random (randomRIO)
 import Text.Pretty.Simple
 import Web.Pixiv.Auth
@@ -39,12 +42,15 @@ data BotConfig = BotConfig
   { nick :: Text,
     userName :: Text,
     realName :: Text,
-    password :: Text,
+    password :: Maybe Text,
     channels :: [Text],
     pixivToken :: Text,
     googleKey :: Text,
     googleCX :: Text,
-    telegraphToken :: Text
+    telegraphToken :: Text,
+    serverTLS :: Bool,
+    serverHost :: ByteString,
+    serverPort :: Int
   }
 
 data MyState = MyState
@@ -60,8 +66,7 @@ runPixivInIRC tag m = do
   let tVar = ircState ^. userState
   MyState {..} <- liftIO . readTVarIO $ tVar
   time <- liftIO getCurrentTime
-  liftIO $ putStrLn $ LT.unpack (pShow time) <> " - Run <" <> tag <> "> with pixiv state:"
-  liftIO $ readMVar pixivState >>= pPrint
+  liftIO $ putStrLn $ LT.unpack (pShow time) <> " - Run <" <> tag <> "> in pixiv monad"
   liftIO . runClientT clientEnv . flip runReaderT pixivState $ unPixivT m
 
 getManager :: IRCBot Manager
@@ -99,12 +104,15 @@ initBotConfig = do
   nick <- T.pack <$> getEnv "NICK"
   userName <- T.pack <$> getEnv "USERNAME"
   realName <- T.pack <$> getEnv "REALNAME"
-  password <- T.pack <$> getEnv "PASSWORD"
+  password <- fmap T.pack <$> lookupEnv "PASSWORD"
   channels <- T.splitOn "," . T.pack <$> getEnv "CHANNELS"
   pixivToken <- T.pack <$> getEnv "PIXIV_TOKEN"
   googleKey <- T.pack <$> getEnv "GOOGLE_KEY"
   googleCX <- T.pack <$> getEnv "GOOGLE_CX"
   telegraphToken <- T.pack <$> getEnv "TELEGRAPH_TOKEN"
+  serverTLS <- read <$> getEnvDefault "TLS" "True"
+  serverHost <- T.encodeUtf8 . T.pack <$> getEnv "SERVER"
+  serverPort <- read <$> getEnv "PORT"
   pure $ BotConfig {..}
 
 initMyState :: BotConfig -> IO MyState

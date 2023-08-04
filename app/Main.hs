@@ -23,10 +23,11 @@ import Lens.Micro
 -- import Network.HTTP.Client (responseBody, responseHeaders)
 import Network.HTTP.Client (responseBody)
 import Network.IRC.Client hiding (channels, nick, password)
+import qualified Network.IRC.Client as I
 import PQ (tagString)
 import Parser
 -- import Text.Printf (printf)
-import SASL
+-- import SASL
 import Servant.Client (ClientError)
 import System.IO
 import Text.Pretty.Simple
@@ -44,19 +45,20 @@ main = do
   hSetBuffering stdout LineBuffering
   botConfig@BotConfig {..} <- initBotConfig
   let conn =
-        tlsConnection (WithDefaultConfig "irc.libera.chat" 6697)
+        ( if serverTLS
+            then tlsConnection (WithDefaultConfig serverHost serverPort)
+            else plainConnection serverHost serverPort
+        )
           & logfunc .~ myIRCLogger
           & username .~ userName
           & realname .~ realName
           & onconnect
             .~ ( do
                    defaultOnConnect
-                   sendSASLCapReq
-                   sendAuthPlain
-                   sendSASLPayload $ mkPlainSASL nick nick password
                    setupTokenRefresh
                    evalDaemon
                )
+          & I.password .~ password
 
       myHandler = EventHandler (matchType _Privmsg) $ \s (_, y) -> case s of
         Channel _channelName senderName -> case y of
@@ -171,7 +173,8 @@ main = do
 
       cfg =
         defaultInstanceConfig nick
-          & handlers .~ (myHandler : saslHandlers (joinChannels channels) <> defaultEventHandlers)
+          & handlers .~ (myHandler : defaultEventHandlers)
+          & I.channels .~ channels
   state <- initMyState botConfig
   let run = runClient conn cfg state in run `CE.catch` (\(e :: CE.SomeException) -> print e >> run)
 
