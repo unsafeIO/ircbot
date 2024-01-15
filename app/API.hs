@@ -128,17 +128,22 @@ hl = try $ do
   let parsed = S.parseTags $ toStrict $ responseBody result
       yi = takeWhile (not . S.tagCloseLit "td") $ dropWhile (not . S.tagOpenLit "td" (S.anyAttrLit ("class", "suit_cont"))) parsed
       ji = takeWhile (not . S.tagCloseLit "td") $ dropWhile (not . S.tagOpenLit "td" (S.anyAttrLit ("class", "taboo_cont"))) parsed
+      dt = takeWhile (not . S.tagCloseLit "div") $ dropWhile (not . S.tagOpenLit "div" (S.anyAttrLit ("class", "date_select"))) parsed
+      lu = takeWhile (not . S.tagCloseLit "p") $ dropWhile (not . S.tagOpenLit "div" (S.anyAttrLit ("class", "date_info_box"))) parsed
       go acc (S.TagOpen "span" [("class", "t6left")] : S.TagText txt : S.TagClose "span" : xs) = go (txt : acc) xs
+      go acc (S.TagOpen "span" [] : _ : S.TagOpen "a" _ : S.TagText txt : S.TagClose "a" : _ : S.TagClose "span" : xs) = go (txt : acc) xs
       go acc (_ : [S.TagClose "span"]) = acc
       go acc (_ : xs) = go acc xs
       go acc _ = acc
       resultYi = decodeUtf8 $ BS.intercalate ", " $ go [] yi
       resultJi = decodeUtf8 $ BS.intercalate ", " $ go [] ji
-      _f = dropWhile (not . S.tagOpenLit "div" (S.anyAttrLit ("class", "item_tit")))
-      info = decodeUtf8 $ case _f . tail . _f $ parsed of
-        -- emprt_r_n => \r\n, not sure why it becomes a tag text
-        (S.TagOpen "div" [("class", "item_tit")] : S.TagText a : S.TagClose "div" : _empty_r_n : S.TagOpen "p" [] : S.TagText b : S.TagClose "p" : _) -> a <> ", " <> b
-        _ -> "gg"
+      date = case dt of
+        S.TagOpen "div" _ : S.TagOpen "span" [] : S.TagText txt : _ -> decodeUtf8 txt
+        _ -> ""
+      lunard = case dropWhile (not . S.tagOpenLit "div" (S.anyAttrLit ("class", "item_tit"))) lu of
+        S.TagOpen "div" [("class", "item_tit")] : S.TagText s1 : S.TagClose "div" : _ : S.TagOpen "p" _ : S.TagText s2 : _ -> decodeUtf8 s1 <> ", " <> decodeUtf8 s2
+        _ -> ""
+      info = date <> ", " <> lunard
   pure (info, resultYi, resultJi)
 
 -- | Upload each large image of an illust. Illust must be multi page
