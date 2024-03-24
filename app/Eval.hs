@@ -23,13 +23,18 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import Debug.Trace (traceIO)
-import GHC (getPrintUnqual, getSessionDynFlags, findModule, mkModuleName, getModuleInfo, modInfoExports, lookupName, TyThing (AnId), DynFlags, PrintUnqualified)
-#if MIN_VERSION_GLASGOW_HASKELL(9,2,0,0)
+import GHC (getSessionDynFlags, findModule, mkModuleName, getModuleInfo, modInfoExports, lookupName, TyThing (AnId), DynFlags, GhcMonad)
+#if MIN_VERSION_GLASGOW_HASKELL(9,6,0,0)
+import GHC (getNamePprCtx, NamePprCtx)
+#else
+import GHC (getPrintUnqual, PrintUnqualified)
+#endif
 #if MIN_VERSION_GLASGOW_HASKELL(9,4,0,0)
 import GHC.Driver.Config.Parser (initParserOpts)
 #else
 import GHC.Driver.Config (initParserOpts)
 #endif
+#if MIN_VERSION_GLASGOW_HASKELL(9,2,0,0)
 import GHC.Runtime.Eval (runDecls)
 import GHC.Parser.Utils (isDecl)
 import GHC.Utils.Outputable (Outputable, ppr, SDoc)
@@ -56,13 +61,24 @@ import Types
 import Utils (forkIRC)
 import Web.Pixiv (Illust, IllustType (TypeIllust), Publicity (Public), SearchTarget (PartialMatchForTags))
 import Web.Pixiv.API
+import Control.Monad (forever, join)
+
+#if MIN_VERSION_GLASGOW_HASKELL(9,6,0,0)
+type Unqual = NamePprCtx
+getUnqual = getNamePprCtx
+#else
+type Unqual = PrintUnqualified
+getUnqual = getPrintUnqual
+#endif
+
+getUnqual :: GhcMonad m => m Unqual
 
 showGHC :: (MonadInterpreter m, Outputable a) => a -> m Text
 showGHC a = do
-  (unqual, df) <- runGhc $ getPrintUnqual >>= \x -> (x,) <$> getSessionDynFlags
+  (unqual, df) <- runGhc $ getUnqual >>= \x -> (x,) <$> getSessionDynFlags
   pure $ T.pack $ showSDocForUser' df unqual (ppr a)
 
-showSDocForUser' :: DynFlags -> PrintUnqualified -> SDoc -> String
+showSDocForUser' :: DynFlags -> Unqual -> SDoc -> String
 #if MIN_VERSION_GLASGOW_HASKELL(9,2,0,0)
 showSDocForUser' df unq doc = showSDocForUser df emptyUnitState unq doc
 #else
@@ -186,7 +202,7 @@ evalIRC (T.unpack -> msg) replyF sendPic lastRef = do
         r <- lift $ evalEnqueue $ runGhc $ do
             mInfo <- fromJust <$> (findModule (mkModuleName "PQ") Nothing >>= getModuleInfo)
             exports <- catMaybes <$> mapM lookupName (modInfoExports mInfo)
-            (unqual, df)<- getPrintUnqual >>= \x -> (x,) <$> getSessionDynFlags
+            (unqual, df)<- getUnqual >>= \x -> (x,) <$> getSessionDynFlags
             pure [T.pack $ showSDocForUser' df unqual (pprTyThingHdr ty) | ty@(AnId _) <- exports]
         lift $ case r of
           Just(Right xs) -> do

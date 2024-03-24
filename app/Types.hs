@@ -8,6 +8,7 @@ module Types where
 
 import Control.Concurrent.MVar
 import Control.Concurrent.STM (TQueue, newTQueueIO)
+import Control.Monad (guard)
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Data.Aeson
